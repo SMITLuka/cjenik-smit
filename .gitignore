@@ -1,0 +1,33 @@
+# --- tajne i konfiguracija (repo je JAVAN: ovdje nikad ne smije biti nista od ovoga) ---
+app/config.php
+.env
+*.pem
+*.key
+storage/
+agent/config.json
+agent/demo/
+
+# --- agent: izlazi, logovi i stanje (podaci o cijenama i lokacijama) ---
+agent/logs/
+agent/out/
+agent/state/
+
+# --- SQL upiti agenta otkrivaju strukturu interne baze (biblioteke, tablice, polja): ostaju samo *.sql.example ---
+agent/sql/*.sql
+agent/sql/**/*.sql
+!agent/sql/*.sql.example
+
+# --- radni podaci ---
+podaci/*.xlsx
+podaci/izvoz/
+
+# --- generirani javni sadrzaj (nastaje na serveru) ---
+public_html/*/
+!public_html/assets/
+public_html/index.html
+public_html/format.html
+public_html/robots.txt
+public_html/sitemap.xml
+
+*.sqlite
+.claude/

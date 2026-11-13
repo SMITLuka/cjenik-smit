@@ -1,0 +1,2 @@
+# Obrana u dubini: app/ se nikad ne smije poslužiti preko weba (treba biti izvan public_html).
+Require all denied

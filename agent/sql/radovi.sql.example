@@ -1,0 +1,19 @@
+﻿-- PRIMJER — prilagodi svojoj bazi pa spremi kao radovi.sql.
+-- Parametri (ODBC, znak upitnika, redom): 1) GRP (npr. 'KA4'), 2) BETNR.
+-- VAZNO: u komentarima ne koristiti znak upitnika (ODBC ga broji kao parametar).
+-- Obavezne kolone: naziv_usluge, maloprodajna_cijena, posebni_oblik_prodaje ('da'/'ne'),
+--   naziv_posebnog_oblika_prodaje, bazna_cijena, sidrena_cijena, najniza_cijena_30_dana
+-- Ako SQL ne vraca bazna_cijena ili sidrena_cijena, agent upisuje onu drugu; najnizu zamjenjuje maloprodajnom.
+
+SELECT
+    r.NAZIV     AS naziv_usluge,
+    r.CIJENA    AS maloprodajna_cijena,
+    'ne'        AS posebni_oblik_prodaje,
+    NULL        AS naziv_posebnog_oblika_prodaje,
+    r.SIDRENA   AS bazna_cijena,
+    r.SIDRENA   AS sidrena_cijena,
+    r.NAJNIZA_30 AS najniza_cijena_30_dana
+FROM RADOVI r
+WHERE r.GRP = ?
+  AND r.BETNR = ?
+

@@ -1,0 +1,12 @@
+{
+  "baseUrl": "https://cjenik.sm-it.hr",
+  "keyId": "k_0123456789abcdef",
+  "odbc": {
+    "connectionString": "DSN=VASA_DSN;UID=cjenik_readonly;PWD={PWD}"
+  },
+  "sqlDir": "sql",
+  "outDir": "out",
+  "logFile": "logs\\agent.log",
+  "deadline": "07:45",
+  "retries": 4
+}

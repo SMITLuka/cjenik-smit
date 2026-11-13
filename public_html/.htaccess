@@ -1,0 +1,54 @@
+# --- cjenik.sm-it.hr ---
+# Staticke datoteke (HTML/CSV) poslužuje Apache izravno; samo /api/ i /admin/ idu u index.php.
+
+Options -Indexes -MultiViews
+DirectoryIndex index.html index.php
+
+<IfModule mod_mime.c>
+    AddType "text/csv; charset=utf-8" .csv
+    AddDefaultCharset UTF-8
+</IfModule>
+
+# Sigurnosna zaglavlja
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "same-origin"
+    Header always set X-Frame-Options "DENY"
+    Header always set Content-Security-Policy "default-src 'none'; style-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+    Header always set Strict-Transport-Security "max-age=31536000"
+    # CSV mora uvijek biti svjez i dohvatljiv automatskim alatima (nema captche/challengea).
+    <FilesMatch "\.csv$">
+        Header set Cache-Control "public, max-age=300, must-revalidate"
+        Header set Access-Control-Allow-Origin "*"
+    </FilesMatch>
+    <FilesMatch "\.html$">
+        Header set Cache-Control "public, max-age=300, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# Nikad izvrsavati nista osim index.php; zabrani pristup skrivenim/privremenim datotekama.
+<FilesMatch "^\.(?!well-known)">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(tmp[0-9a-f]*|bak|sql|log|ini|json|md)$">
+    Require all denied
+</FilesMatch>
+<FilesMatch "^(?!index\.php$).+\.php[0-9]?$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # /api/* i /admin/* -> front controller
+    RewriteRule ^(api|admin)(/.*)?$ index.php [L,QSA]
+    # sve ostalo sto ne postoji -> 404 iz index.php
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# IP allowlist za /api i /admin: ukljuci nakon sto znas svoje adrese (vidi README, "Hardening").
+# Primjer (Apache 2.4):
+# <If "%{REQUEST_URI} =~ m#^/(api|admin)/#">
+#     Require ip 203.0.113.10 198.51.100.0/24
+# </If>

@@ -1,0 +1,33 @@
+-- PRIMJER — prilagodi svojoj bazi pa spremi kao vozila.sql (agent trazi tocno to ime).
+-- Parametri (ODBC, znak upitnika, redom): 1) oznaka koncesije (GRP, npr. 'KA4'), 2) broj lokacije (BETNR).
+-- VAZNO: u komentarima ne koristiti znak upitnika (ODBC ga broji kao parametar).
+-- Kolone se mapiraju PO IMENU (alias u SELECT-u), redoslijed nije bitan. Obavezne kolone:
+--   naziv, sifra, marka, neto_kolicina, jedinica_mjere, cijena_po_jedinici_mjere, maloprodajna_cijena,
+--   posebni_oblik_prodaje ('da'/'ne'), naziv_posebnog_oblika_prodaje, bazna_cijena, sidrena_cijena,
+--   barkod (neobavezno), dostupnost ('dostupno'), najniza_cijena_30_dana
+-- Ako SQL ne vraca bazna_cijena ili sidrena_cijena, agent upisuje onu drugu (na dan 10.9.2026. su iste);
+-- ako ne vraca najniza_cijena_30_dana, agent upisuje maloprodajnu cijenu.
+-- Cijene su s PDV-om i PPMV-om; maloprodajna je s popustom. Prikazuju se samo artikli na zalihi.
+-- Iznosi: brojevi (decimalna tocka se postavlja u agentu). Samo SELECT; DB korisnik neka je read-only.
+
+SELECT
+    a.NAZIV              AS naziv,
+    a.ARV_SALES_ID       AS sifra,
+    a.MARKA              AS marka,
+    1                    AS neto_kolicina,
+    a.JMJ                AS jedinica_mjere,
+    c.MPC_BEZ_POPUSTA    AS cijena_po_jedinici_mjere,
+    c.MPC                AS maloprodajna_cijena,
+    CASE WHEN c.AKCIJA = 1 THEN 'da' ELSE 'ne' END AS posebni_oblik_prodaje,
+    c.AKCIJA_NAZIV       AS naziv_posebnog_oblika_prodaje,
+    c.SIDRENA            AS sidrena_cijena,
+    a.BARKOD             AS barkod,
+    'dostupno'           AS dostupnost,
+    c.NAJNIZA_30         AS najniza_cijena_30_dana
+FROM ARTIKLI a
+JOIN CIJENE c  ON c.ARTIKL = a.ID
+JOIN STANJE s ON s.ARTIKL = a.ID AND s.GRP = c.GRP AND s.BETNR = c.BETNR
+WHERE c.GRP = ?
+  AND c.BETNR = ?
+  AND s.STANJE > 0
+
