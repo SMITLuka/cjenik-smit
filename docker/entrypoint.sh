@@ -15,17 +15,20 @@ cp -f "$SRC/assets/"* "$WEB/assets/"
 chown -R www-data:www-data "$WEB" "$STORAGE"
 
 # Migracija baze (idempotentna). Ceka bazu do ~60 s (docker compose pokrece ih istodobno).
-i=0
-until $RUN_AS "php /var/www/app/bin/migrate.php" >/tmp/migrate.log 2>&1; do
-    i=$((i + 1))
-    if [ "$i" -ge 30 ]; then
-        echo "Migracija baze nije uspjela:" >&2
-        cat /tmp/migrate.log >&2
-        exit 1
-    fi
-    sleep 2
-done
-cat /tmp/migrate.log
+# SKIP_MIGRATE=1: tablice su vec kreirane (docker/db/01-schema.sql), a korisnik baze nema CREATE/ALTER.
+if [ "${SKIP_MIGRATE:-0}" != "1" ]; then
+    i=0
+    until $RUN_AS "php /var/www/app/bin/migrate.php" >/tmp/migrate.log 2>&1; do
+        i=$((i + 1))
+        if [ "$i" -ge 30 ]; then
+            echo "Migracija baze nije uspjela:" >&2
+            cat /tmp/migrate.log >&2
+            exit 1
+        fi
+        sleep 2
+    done
+    cat /tmp/migrate.log
+fi
 
 # Javne stranice iz baze (prazno ako jos nema lokacija).
 $RUN_AS "php /var/www/app/bin/rebuild.php" || echo "rebuild nije uspio (nastavljam)" >&2

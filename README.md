@@ -58,8 +58,14 @@ Hosting nikad ne otvara vezu prema vašoj mreži. Jedini ulaz za podatke je potp
 | `BASE_URL` | zadano `https://cjenik.sm-it.hr` |
 | `INGEST_ALLOWED_IPS`, `ADMIN_ALLOWED_IPS` | zarez-odvojene IP adrese/CIDR; prazno = bez ograničenja (samo za razvoj) |
 | `CLIENT_IP_HEADER` | iza reverse proxyja npr. `HTTP_X_FORWARDED_FOR`; postaviti samo ako je kontejner dostupan isključivo preko tog proxyja |
-| `REQUIRE_HTTPS` | zadano `true` (TLS završava na proxyju, uz `CLIENT_IP_HEADER` se čita `X-Forwarded-Proto`) |
+| `CLIENT_IP_HOPS` | koliko pouzdanih proxyja stoji ispred aplikacije (Coolify/Traefik = `1`, CDN + Traefik = `2`). Čita se adresa koju je dodao proxy (s **kraja** `X-Forwarded-For`), nikad prva jer je klijent može krivotvoriti |
+| `REQUIRE_HTTPS` | zadano `true` (TLS završava na proxyju, uz `CLIENT_IP_HEADER` se čita `X-Forwarded-Proto`). Admin kolačić je `Secure`, pa **prijava u admin ne radi bez HTTPS-a**: na Coolifyu domena mora biti `https://` |
+| `SKIP_MIGRATE` | `1` = ne kreiraj tablice pri pokretanju (kad ih je administrator baze kreirao iz `docker/db/01-schema.sql`) |
 | `OPERATOR_NAME`, `OPERATOR_CONTACT`, `ALERT_EMAIL`, `MAIL_FROM`, `RETENTION_DAYS`, `WATCHDOG_*` | neobavezno |
+
+**Baza:** `docker/db/01-schema.sql` (9 tablica, generirano iz koda) i `docker/db/02-user.sql` (baza `cjenik` i korisnik `cjenik_app`, lozinka se generira i ide samo u `DB_PASS`). Tko je što poslao i kada bilježi tablica `uploads` (`key_id` = API ključ pošiljatelja, lokacija, cjenik, datum cijena, broj redaka, SHA-256, naziv datoteke, vrijeme), a radnje u adminu `audit_log`.
+
+**Struktura mapa s CSV-ovima** (ispod `/var/www/html`): `<oznaka koncesije>/<broj lokacije>/<cjenik>/<naziv datoteke>.csv` plus stalni `latest.csv`, npr. `autocentarroca/1/dijelovi/…csv`. Oznaka je slug koncesije (ili GRP). Mape aplikacija sama kreira pri prvom slanju, ali samo za lokacije koje postoje u bazi (zaštita od pisanja u proizvoljne putanje); starije od 30 dana briše cron.
 
 Volumeni: `/var/www/html` (objavljeni cjenici i CSV, **mora biti trajan**) i `/var/www/storage` (logovi, backup). Pri pokretanju kontejner migrira bazu, regenerira javne stranice i svakih 5 minuta pokreće cron (retencija 30 dana, watchdog, prijenos jučerašnjeg cjenika).
 

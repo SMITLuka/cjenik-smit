@@ -57,6 +57,9 @@ return [
     // Iza reverse proxyja (TLS i stvarna IP klijenta): npr. HTTP_X_FORWARDED_FOR. Postavljati SAMO ako je kontejner
     // dostupan iskljucivo preko proxyja koji to zaglavlje sam postavlja (inace ga klijent moze krivotvoriti).
     'client_ip_header' => $env('CLIENT_IP_HEADER'),
+    // Koliko pouzdanih proxyja stoji ispred aplikacije (Coolify/Traefik = 1; CDN + Traefik = 2).
+    // Cita se adresa koju je dodao proxy (s kraja lanca), nikad prva, jer nju klijent moze krivotvoriti.
+    'client_ip_hops' => max(1, (int)$env('CLIENT_IP_HOPS', '1')),
 
     // false samo za lokalni razvoj bez HTTPS-a.
     'require_https' => $bool($env('REQUIRE_HTTPS'), true),

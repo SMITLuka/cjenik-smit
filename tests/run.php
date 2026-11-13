@@ -132,6 +132,16 @@ function call(string $keyId, string $secret, string $method, string $uri, string
 
 // ---------------------------------------------------------------- Ip
 echo "Ip\n";
+// IP klijenta iza proxyja: nikad prva adresa iz X-Forwarded-For (krivotvorljiva)
+Config::load(['client_ip_header' => 'HTTP_X_FORWARDED_FOR']);
+t('iza proxyja: zadnja adresa (dodao proxy)', Ip::client(['REMOTE_ADDR' => '172.18.0.2', 'HTTP_X_FORWARDED_FOR' => '203.0.113.9']) === '203.0.113.9');
+t('krivotvoreni XFF: klijent salje allowed IP, proxy dodaje pravu', Ip::client(['REMOTE_ADDR' => '172.18.0.2', 'HTTP_X_FORWARDED_FOR' => '10.0.0.5, 198.51.100.7']) === '198.51.100.7');
+Config::load(['client_ip_header' => 'HTTP_X_FORWARDED_FOR', 'client_ip_hops' => 2]);
+t('dva proxyja: predzadnja adresa', Ip::client(['REMOTE_ADDR' => '172.18.0.2', 'HTTP_X_FORWARDED_FOR' => '10.0.0.5, 198.51.100.7, 172.20.0.3']) === '198.51.100.7');
+t('manje adresa nego hopova: REMOTE_ADDR', Ip::client(['REMOTE_ADDR' => '172.18.0.2', 'HTTP_X_FORWARDED_FOR' => '198.51.100.7']) === '172.18.0.2');
+t('nevaljana adresa u headeru: REMOTE_ADDR', Ip::client(['REMOTE_ADDR' => '172.18.0.2', 'HTTP_X_FORWARDED_FOR' => 'nije-ip']) === '172.18.0.2');
+Config::load(['client_ip_header' => null]);
+t('bez konfiguriranog headera se zaglavlje ignorira', Ip::client(['REMOTE_ADDR' => '172.18.0.2', 'HTTP_X_FORWARDED_FOR' => '10.0.0.5']) === '172.18.0.2');
 t('tocna IP', Ip::allowed('10.0.0.5', ['10.0.0.5']));
 t('CIDR /24 unutra', Ip::allowed('192.168.1.77', ['192.168.1.0/24']));
 t('CIDR /24 izvan', !Ip::allowed('192.168.2.1', ['192.168.1.0/24']));

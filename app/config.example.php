@@ -33,6 +33,8 @@ return [
     // Ako je ispred PHP-a proxy (npr. Hetznerov Varnish), upisi zaglavlje iz kojeg se cita stvarna IP
     // klijenta, npr. 'HTTP_X_FORWARDED_FOR'. Provjeri na stvarnom hostingu! NULL = koristi REMOTE_ADDR.
     'client_ip_header' => null,
+    // Broj pouzdanih proxyja ispred aplikacije. Cita se adresa s kraja X-Forwarded-For (koju je dodao proxy), nikad prva.
+    'client_ip_hops' => 1,
 
     // false samo za lokalni razvoj bez HTTPS-a.
     'require_https' => true,

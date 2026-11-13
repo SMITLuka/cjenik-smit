@@ -5,17 +5,26 @@ namespace Cjenik;
 
 final class Ip
 {
-    /** Stvarna IP klijenta. Header se koristi samo ako je izricito konfiguriran (iza pouzdanog proxyja). */
-    /** @param array<string,mixed>|null $server */
+    /**
+     * Stvarna IP klijenta. Header se koristi samo ako je izricito konfiguriran (iza pouzdanog proxyja).
+     *
+     * X-Forwarded-For: klijent moze sam poslati proizvoljne adrese, a svaki proxy na kraj lanca dodaje adresu s koje je
+     * zahtjev dobio. Zato se NIKAD ne uzima prva adresa (krivotvorljiva: zaobisla bi IP allowlist i ogranicenje
+     * pokusaja), nego ona koju je dodao nas pouzdani proxy: 'client_ip_hops'-ta s kraja (zadano 1 = zadnja,
+     * jedan proxy ispred aplikacije; za proxy iza proxyja, npr. CDN + Traefik, 2).
+     *
+     * @param array<string,mixed>|null $server
+     */
     public static function client(?array $server = null): string
     {
         $s = $server ?? $_SERVER;
         $header = Config::get('client_ip_header');
         if (is_string($header) && $header !== '' && !empty($s[$header])) {
-            // X-Forwarded-For: client, proxy1, proxy2 -> prvi je klijent
-            $first = trim(explode(',', (string)$s[$header])[0]);
-            if (filter_var($first, FILTER_VALIDATE_IP)) {
-                return $first;
+            $parts = array_values(array_filter(array_map('trim', explode(',', (string)$s[$header])), 'strlen'));
+            $hops = max(1, (int)Config::get('client_ip_hops', 1));
+            $idx = count($parts) - $hops;
+            if ($idx >= 0 && filter_var($parts[$idx], FILTER_VALIDATE_IP)) {
+                return $parts[$idx];
             }
         }
         return (string)($s['REMOTE_ADDR'] ?? '0.0.0.0');
