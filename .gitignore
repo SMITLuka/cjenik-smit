@@ -17,6 +17,9 @@ agent/sql/*.sql
 agent/sql/**/*.sql
 !agent/sql/*.sql.example
 
+# --- extractor: build izlaz ---
+extractor/target/
+
 # --- radni podaci ---
 podaci/*.xlsx
 podaci/izvoz/

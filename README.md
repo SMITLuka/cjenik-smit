@@ -41,6 +41,7 @@ Hosting nikad ne otvara vezu prema vašoj mreži. Jedini ulaz za podatke je potp
 |---|---|
 | `public_html/` | document root domene: `index.php` (samo `/api` i `/admin`), `.htaccess`, `assets/`. Ovdje aplikacija **generira** HTML/CSV. |
 | `app/` | PHP kod, predlošci, `bin/` CLI skripte. **Mora biti izvan document roota.** |
+| `extractor/` | Java servis koji sam čita AS400 i šalje cjenike (vidi odjeljak Extractor). |
 | `agent/` | PowerShell agent za vašu mrežu (`Send-Prices.ps1`, `Register-Task.ps1`, primjeri SQL-a). |
 | `seed/locations.csv` | 50 lokacija iz `Betins.xls` (dijakritici očišćeni, **provjeri nazive**). |
 | `Dockerfile`, `docker/` | slika za Docker (vidi odjeljak Docker). |
@@ -79,6 +80,30 @@ docker compose -f docker-compose.example.yml exec web su -s /bin/sh www-data -c 
 ```
 
 > Mail upozorenja (`ALERT_EMAIL`) koristi PHP `mail()`, a kontejner nema MTA: za e-mail treba dodati SMTP relay. Slika nije testirana na računalu na kojem je pripremljena (nema Dockera); prvi `build` treba provjeriti.
+
+## Extractor (servis sam čita AS400)
+
+`extractor/` je Java 17 servis (jt400, bez frameworka) koji **svaki dan u 07:00** izvrši SQL-ove nad AS400 (samo `SELECT`, veza je `setReadOnly`), primijeni ista pravila kao PowerShell agent (marke, akcija, najniža cijena u 30 dana, čišćenje naziva i barkoda) i pošalje CSV na ingest API portala s istim HMAC potpisom. Popis lokacija i uključenih cjenika uzima s portala (`GET /api/v1/locations`), pa se koncesije i cjenici uključuju i isključuju u adminu, bez promjene koda. Agent iz PowerShella i dalje radi i može se koristiti umjesto njega (ili za probu).
+
+Coolify: nova aplikacija iz **istog repoa**, *Base Directory* `/extractor`, Dockerfile.
+
+| Varijabla | Opis |
+|---|---|
+| `PORTAL_URL` | adresa portala, **https** (npr. `https://cjenik.sm-it.hr`) |
+| `PORTAL_KEY_ID`, `PORTAL_SECRET` | API ključ iz admina (*Ključevi*, opseg „Sve lokacije”); tajna samo u Coolify secretima |
+| `AS400_HOST`, `AS400_USER`, `AS400_PASSWORD` | isti nazivi kao u MIMV-u. **Poseban korisnik samo za čitanje**, ne korisnik s širokim ovlastima |
+| `AS400_JDBC_PARAMS` | neobavezno, zadano `extended metadata=false;keep alive=true;libraries=QGPL;prompt=false;errors=full;date format=iso` |
+| `SQL_DIR` | zadano `/config/sql`; unutra `dijelovi/*.sql`, `vozila/*.sql`, `radovi/*.sql` (ili `dijelovi.sql`…). U upitu `{GRP}` i `{BETNR}`. **SQL se ne nalazi u repou** (otkriva strukturu baze): montira se kao datoteke |
+| `RUN_AT`, `DEADLINE`, `TZ` | zadano `07:00`, `07:45` (nakon toga nema ponavljanja), `Europe/Zagreb` |
+| `RETRIES` | zadano 4 (eksponencijalno čekanje) |
+| `ONLY`, `FEED`, `DRY_RUN`, `RUN_ONCE`, `RUN_ON_START` | proba: `RUN_ONCE=true DRY_RUN=true ONLY=kb5/1 FEED=dijelovi` sprema CSV u `/data/out/<datum>/` bez slanja |
+| `FROM_DIR` | proba bez AS400: čita `<grp>_<broj>_<cjenik>.csv` iz mape |
+
+**Trajni volumen `/data` je obavezan:** u `/data/state/history` je povijest cijena za „najnižu cijenu u 30 dana” (za dijelove u bazi nema žurnala). Bez volumena se povijest gubi pri svakom deployu. Povijest agenta (`agent\state\history\*.tsv`) ima isti oblik i može se kopirati u `/data/state/history/`.
+
+Sigurnost: lozinka AS400 i API tajna samo u Coolify secretima; servis ne sluša nijedan port; AS400 treba biti dostupan samo s poslužitelja na kojem radi servis; korisnik baze ograničen na čitanje.
+
+> Neprovjereno: stvarno spajanje na AS400 (jt400) i Integration Hub. Provjereno: SQL → CSV (H2), pravila, potpis identičan PHP implementaciji, slanje na pravi portal (`FROM_DIR`), dnevni raspored. Integration Hub nije potreban za prvu verziju (pristupni podaci su u okolinskim varijablama); kasnije se može dodati kao izvor podataka po firmi.
 
 ## Postavljanje na Hetzner Webhosting L
 
