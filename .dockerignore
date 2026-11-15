@@ -18,3 +18,5 @@ public_html/format.html
 public_html/robots.txt
 public_html/sitemap.xml
 !public_html/assets
+!public_html/index.php
+!public_html/.htaccess
