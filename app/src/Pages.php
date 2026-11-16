@@ -61,6 +61,13 @@ final class Pages
             foreach ($items as $it) {
                 $loc = $it['loc'];
                 $feeds = $it['feeds'];
+                // naziv za preuzimanje stalne adrese latest.csv (vrijedi i za objave nastale prije ove znacajke)
+                foreach ($feeds as $feedKey => $f) {
+                    $name = Support::getState('latest:' . (int)$loc['id'] . ':' . $feedKey) ?? (isset($f['uploads'][0]) ? (string)$f['uploads'][0]['file_name'] : '');
+                    if ($name !== '') {
+                        Publisher::writeLatestHeaders($loc, $feedKey, $name);
+                    }
+                }
                 $content = View::render('public/location', $common + $scoped + ['concession' => $c, 'loc' => $loc, 'feeds' => $feeds, 'today' => $today]);
                 $title = $loc['naziv'] . ' (' . strtoupper((string)$loc['grp']) . '/' . $loc['betnr'] . ')';
                 Publisher::writeAtomic(

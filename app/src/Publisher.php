@@ -110,6 +110,9 @@ final class Publisher
         self::copyClean($srcFile, $target);
         if ($date === Clock::today()) {
             self::copyClean($target, $dir . '/latest.csv');
+            // stalna adresa latest.csv se preuzima pod pravim nazivom datoteke (ne pod 'latest.csv')
+            Support::setState('latest:' . (int)$loc['id'] . ':' . $feed, $name);
+            self::writeLatestHeaders($loc, $feed, $name);
         }
         // ponovni upload istog dana zamjenjuje prethodnu datoteku tog dana
         if ($existing !== null) {
@@ -137,6 +140,32 @@ final class Publisher
             Pages::renderAll();
         }
         return ['path' => $dated, 'bytes' => $bytes, 'sha256' => $sha];
+    }
+
+    /**
+     * Uz latest.csv upisuje .htaccess koji postavlja Content-Disposition s pravim nazivom datoteke, pa se stalna adresa
+     * (npr. .../proizvodi/latest.csv) spremi kao npr. rb-auto_autosalon_..._000007_20261117070000.csv. Zaglavlje radi
+     * i za automatske alate (curl -OJ) i preglednike; sadrzaj je i dalje izravno posluzen (200, bez preusmjeravanja).
+     * @param array<string,mixed> $loc
+     */
+    public static function writeLatestHeaders(array $loc, string $feed, string $fileName): void
+    {
+        if (preg_match('/^[A-Za-z0-9._-]{1,200}$/', $fileName) !== 1) {
+            return; // nikad nesiguran znak u zaglavlju
+        }
+        $dir = self::feedDir($loc, $feed);
+        if (!is_dir($dir)) {
+            return;
+        }
+        self::writeAtomic($dir . '/.htaccess',
+            "# Generirano: stalna adresa latest.csv preuzima se pod pravim nazivom datoteke.
+"
+            . "<IfModule mod_headers.c>
+<Files \"latest.csv\">
+    Header set Content-Disposition \"attachment; filename=\\\"$fileName\\\"\"
+</Files>
+</IfModule>
+");
     }
 
     /** Brise sve starije od retention_days (30 datoteka po lokaciji i feedu). @return int obrisano */

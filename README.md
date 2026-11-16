@@ -66,6 +66,8 @@ Hosting nikad ne otvara vezu prema vašoj mreži. Jedini ulaz za podatke je potp
 
 **Baza:** `docker/db/01-schema.sql` (9 tablica, generirano iz koda) i `docker/db/02-user.sql` (baza `cjenik` i korisnik `cjenik_app`, lozinka se generira i ide samo u `DB_PASS`). Tko je što poslao i kada bilježi tablica `uploads` (`key_id` = API ključ pošiljatelja, lokacija, cjenik, datum cijena, broj redaka, SHA-256, naziv datoteke, vrijeme), a radnje u adminu `audit_log`.
 
+**Stalna adresa `latest.csv`** preuzima se pod pravim nazivom datoteke (adresa, oznaka, broj pohrane, vrijeme): uz `latest.csv` portal upisuje `.htaccess` sa zaglavljem `Content-Disposition` (zahtijeva `mod_headers` i `AllowOverride FileInfo`; u Docker slici je uključeno). Nakon deploya zaglavlja se za već objavljene cjenike upišu pri pokretanju (rebuild).
+
 **Struktura mapa s CSV-ovima** (ispod `/var/www/html`): `<oznaka koncesije>/<broj lokacije>/<cjenik>/<naziv datoteke>.csv` plus stalni `latest.csv`, npr. `autocentarroca/1/proizvodi/…csv`. Oznaka je slug koncesije (ili GRP). Mape aplikacija sama kreira pri prvom slanju, ali samo za lokacije koje postoje u bazi (zaštita od pisanja u proizvoljne putanje); starije od 30 dana briše cron.
 
 Volumeni: `/var/www/html` (objavljeni cjenici i CSV, **mora biti trajan**) i `/var/www/storage` (logovi, backup). Pri pokretanju kontejner migrira bazu, regenerira javne stranice i svakih 5 minuta pokreće cron (retencija 30 dana, watchdog, prijenos jučerašnjeg cjenika).

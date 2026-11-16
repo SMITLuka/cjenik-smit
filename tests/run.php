@@ -484,6 +484,20 @@ t('stranica koncesije ima poveznice za skok na lokaciju', str_contains($g, 'href
 t('druga koncesija nije na toj stranici (izolacija)', !str_contains($g, 'Druga koncesija'));
 $loc1 = (string)file_get_contents("$root/web/kb5/1/index.html");
 t('stranica pojedine lokacije i dalje postoji s istim sadrzajem', str_contains($loc1, 'Preuzmi CSV') && str_contains($loc1, '<h1>RB AUTO RIJEKA</h1>') && str_contains($loc1, 'Automatsko preuzimanje') && !str_contains($loc1, 'RB AUTO ZAGREB'));
+// latest.csv se preuzima pod pravim nazivom datoteke (Content-Disposition u .htaccess uz latest.csv)
+$h1 = "$root/web/kb5/1/proizvodi/.htaccess";
+$n1 = basename(upFile($root, 'kb5', 1, 'proizvodi', '2026-11-17'));
+t('uz latest.csv postoji .htaccess s pravim nazivom za preuzimanje', is_file($h1) && str_contains((string)file_get_contents($h1), 'filename=\"' . $n1 . '\"') && str_contains((string)file_get_contents($h1), '<Files "latest.csv">'), is_file($h1) ? (string)file_get_contents($h1) : 'nema');
+call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/1/proizvodi', PROIZVODI_CSV);
+$n2 = basename(upFile($root, 'kb5', 1, 'proizvodi', '2026-11-17'));
+t('nova objava mijenja naziv za preuzimanje latest.csv', $n2 !== $n1 && str_contains((string)file_get_contents($h1), $n2) && !str_contains((string)file_get_contents($h1), $n1));
+unlink($h1);
+\Cjenik\Pages::renderAll();
+t('rebuild vraca .htaccess i za vec objavljene cjenike', is_file($h1) && str_contains((string)file_get_contents($h1), $n2));
+t('lokacija bez objave nema .htaccess', !is_file("$root/web/kb5/31/proizvodi/.htaccess"));
+@mkdir("$root/web/kb5/31/proizvodi", 0777, true);
+\Cjenik\Publisher::writeLatestHeaders(Locations::find('kb5', 31), 'proizvodi', 'x";evil');
+t('nesiguran naziv se ne upisuje u zaglavlje', !is_file("$root/web/kb5/31/proizvodi/.htaccess"));
 rrmdir($root);
 
 // ---------------------------------------------------------------- jednokratno ciscenje starih cjenika dijelovi/vozila
