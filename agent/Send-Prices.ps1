@@ -276,7 +276,7 @@ function New-CsvFromSql([string]$Grp, [int]$Betnr, [string]$Feed, [string[]]$Src
                 foreach ($c in $cols) {
                     if (-not $idx.ContainsKey($c) -and $OptionalCols -notcontains $c -and $DerivedCols -notcontains $c) { throw "$($file.Name): SQL ne vraca kolonu '$c' (alias u SELECT-u)." }
                 }
-                $fileRows = 0; $skipped = 0
+                $fileRows = 0; $skipped = 0; $zeroCount = @{}; $zeroSamples = @()
                 while ($rd.Read()) {
                     $vals = @{}
                     foreach ($c in $cols) {
@@ -288,6 +288,14 @@ function New-CsvFromSql([string]$Grp, [int]$Betnr, [string]$Feed, [string[]]$Src
                     foreach ($nc in @('naziv', 'naziv_usluge')) {
                         if ($vals.ContainsKey($nc) -and $vals[$nc] -eq '' -and $vals.ContainsKey('sifra')) { $vals[$nc] = $vals['sifra'] }
                     }
+                    # nule u cijenama iz baze: agent ih zamjenjuje, ali ih prijavljuje (da se podaci isprave u DMS-u)
+                    foreach ($zc in @('najniza_cijena_30_dana', 'sidrena_cijena', 'bazna_cijena')) {
+                        $zv = ConvertTo-MoneyOrNull $vals[$zc]
+                        if ($idx.ContainsKey($zc) -and $null -ne $zv -and $zv -le 0) {
+                            $zeroCount[$zc] = 1 + [int]$zeroCount[$zc]
+                            if ($zeroSamples.Count -lt 5 -and $zeroSamples -notcontains $vals['sifra']) { $zeroSamples += $vals['sifra'] }
+                        }
+                    }
                     if (Complete-Row $vals $idx $cols $hist $today $sqlNajniza) { $histChanged = $true }
                     $price = ConvertTo-MoneyOrNull $vals['maloprodajna_cijena']
                     if ($null -eq $price -or $price -le 0) { $skipped++; continue }
@@ -296,6 +304,7 @@ function New-CsvFromSql([string]$Grp, [int]$Betnr, [string]$Feed, [string[]]$Src
                     $n++; $srcRows++; $fileRows++
                 }
             } finally { $rd.Close() }
+            if ($zeroCount.Count -gt 0) { Write-Log 'WARN' "  ${Grp}/${Betnr}/${Feed}: $($file.Name): u bazi je cijena 0 za $(($zeroCount.Keys | ForEach-Object { "$_=$($zeroCount[$_])" }) -join ', ') (zamijenjeno maloprodajnom/sidrenom), npr. sifre $($zeroSamples -join ', ')" }
             if ($skipped -gt 0) { Write-Log 'WARN' "  ${Grp}/${Betnr}/${Feed}: $($file.Name): preskoceno $skipped redaka bez valjane maloprodajne cijene" }
             Write-Log 'INFO' "  ${Grp}/${Betnr}/${Feed}: ${src}/$($file.Name) -> $fileRows redaka"
         }

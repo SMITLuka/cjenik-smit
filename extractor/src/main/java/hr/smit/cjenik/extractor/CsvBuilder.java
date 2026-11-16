@@ -114,6 +114,8 @@ public final class CsvBuilder {
         Set<String> sqlCols = new HashSet<>(idx.keySet());
         int n = 0;
         int skipped = 0;
+        Map<String, Integer> zeroCount = new java.util.TreeMap<>();
+        List<String> zeroSamples = new java.util.ArrayList<>();
         while (rs.next()) {
             Map<String, String> vals = new LinkedHashMap<>();
             for (String c : cols) {
@@ -127,6 +129,16 @@ public final class CsvBuilder {
             for (String nc : List.of("naziv", "naziv_usluge")) {
                 if (vals.containsKey(nc) && vals.get(nc).isEmpty() && vals.containsKey("sifra")) {
                     vals.put(nc, vals.get("sifra"));
+                }
+            }
+            // nule u cijenama iz baze: servis ih zamjenjuje, ali ih prijavljuje (da se podaci isprave u DMS-u)
+            for (String zc : List.of("najniza_cijena_30_dana", "sidrena_cijena", "bazna_cijena")) {
+                BigDecimal zv = RowRules.money(vals.getOrDefault(zc, ""));
+                if (sqlCols.contains(zc) && zv != null && zv.signum() <= 0) {
+                    zeroCount.merge(zc, 1, Integer::sum);
+                    if (zeroSamples.size() < 5 && !zeroSamples.contains(vals.getOrDefault("sifra", "?"))) {
+                        zeroSamples.add(vals.getOrDefault("sifra", "?"));
+                    }
                 }
             }
             RowRules.complete(vals, sqlCols, cols, hist, today, sqlNajniza);
@@ -145,6 +157,9 @@ public final class CsvBuilder {
             }
             sb.append('\n');
             n++;
+        }
+        if (!zeroCount.isEmpty()) {
+            Log.warn("  " + fileName + ": u bazi je cijena 0 za " + zeroCount + " (zamijenjeno maloprodajnom/sidrenom), npr. sifre " + zeroSamples);
         }
         if (skipped > 0) {
             Log.warn("  " + fileName + ": preskoceno " + skipped + " redaka bez valjane maloprodajne cijene");
