@@ -1,0 +1,29 @@
+# Lokacije koje nemaju vozila (u DMS-u nema biblioteke vozila ili nema vozila na stanju).
+# Koristi se ovako:  php app/bin/set-feeds.php vozila off @/var/www/seed/bez-vozila.txt
+ka4/101
+ka4/102
+ka4/114
+ka4/120
+ka5/11
+ka9/12
+ka9/20
+kb1/5
+kb5/21
+kb5/31
+kb9/2
+kb9/20
+kb9/30
+kf3/21
+kf3/41
+kf4/5
+kf5/1
+kf8/10
+kf8/11
+kf8/12
+kf8/15
+kf8/20
+kf8/30
+km1/2
+km3/1
+km3/2
+km5/10

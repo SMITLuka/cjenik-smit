@@ -161,6 +161,27 @@ final class Locations
     }
 
     /**
+     * Ukljucuje/iskljucuje jedan cjenik (dijelovi|vozila|radovi) lokacije. Iskljuceni cjenik agent/extractor ne dobiva
+     * u popisu, a pregled ga ne racuna kao "nedostaje". Vraca false ako je cjenik vec bio u tom stanju.
+     */
+    public static function setFeed(int $id, string $feed, bool $on): bool
+    {
+        if (!CsvSpec::isFeed($feed)) {
+            throw new InvalidArgumentException("Nepoznat cjenik '$feed' (dijelovi, vozila ili radovi).");
+        }
+        $loc = self::byId($id);
+        if ($loc === null) {
+            throw new InvalidArgumentException('Lokacija ne postoji.');
+        }
+        $col = 'feed_' . $feed; // whitelist gore: nema SQL injectiona
+        if ((int)$loc[$col] === ($on ? 1 : 0)) {
+            return false;
+        }
+        Db::run("UPDATE locations SET $col = ? WHERE id = ?", [$on ? 1 : 0, $id]);
+        return true;
+    }
+
+    /**
      * Trajno brise lokaciju: objavljene datoteke (i arhivu), zapise uploada, ukida kljuceve vezane uz tu lokaciju
      * i, ako koncesija ostane bez lokacija, brise i nju. Poziva se iz CLI-ja (bin/remove-location.php).
      * @return array{files:int, concession_removed:bool}

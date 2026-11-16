@@ -428,6 +428,38 @@ t('drugi prolaz nema nista za prenijeti', $s['missing'] === [] && $s['carried'] 
 t('stranica javlja da je cjenik prenesen', str_contains((string)file_get_contents("$root/web/ka4/1/index.html"), 'preuzet cjenik iz prethodnog dana'));
 rrmdir($root);
 
+// ---------------------------------------------------------------- iskljucivanje cjenika (set-feeds)
+echo "Iskljucivanje cjenika\n";
+$root = freshEnv();
+Locations::create(['grp' => 'ka4', 'betnr' => 101, 'naziv' => 'Split']);
+Locations::create(['grp' => 'ka4', 'betnr' => 102, 'naziv' => 'Sibenik']);
+$id101 = (int)Locations::find('ka4', 101)['id'];
+t('prije: sva tri cjenika ukljucena', Locations::feeds(Locations::find('ka4', 101)) === ['dijelovi', 'vozila', 'radovi']);
+t('setFeed vozila off mijenja', Locations::setFeed($id101, 'vozila', false) === true);
+t('nakon: vozila nema u popisu cjenika', Locations::feeds(Locations::find('ka4', 101)) === ['dijelovi', 'radovi']);
+t('susjedna lokacija nije dirnuta', Locations::feeds(Locations::find('ka4', 102)) === ['dijelovi', 'vozila', 'radovi']);
+t('ponovno isto stanje: nema promjene', Locations::setFeed($id101, 'vozila', false) === false);
+t('setFeed vozila on vraca cjenik', Locations::setFeed($id101, 'vozila', true) === true && in_array('vozila', Locations::feeds(Locations::find('ka4', 101)), true));
+$bad = false;
+try {
+    Locations::setFeed($id101, 'vozila; DROP TABLE locations', false);
+} catch (InvalidArgumentException) {
+    $bad = true;
+}
+t('nepoznat cjenik odbijen (nema SQL injectiona)', $bad);
+$bad = false;
+try {
+    Locations::setFeed(999999, 'vozila', false);
+} catch (InvalidArgumentException) {
+    $bad = true;
+}
+t('nepoznata lokacija odbijena', $bad);
+Locations::setFeed($id101, 'vozila', false);
+$k = Keys::create('global', null, null, 'agent');
+$r = call($k['key_id'], $k['secret'], 'GET', '/api/v1/locations', '');
+t('API vise ne nudi iskljuceni cjenik', !str_contains(json_encode($r), '"betnr":101,"feeds":["dijelovi","vozila"'), json_encode($r));
+rrmdir($root);
+
 // ---------------------------------------------------------------- slug (javna adresa po nazivu)
 echo "Slug\n";
 $root = freshEnv();

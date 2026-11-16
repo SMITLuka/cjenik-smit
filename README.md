@@ -105,6 +105,21 @@ Sigurnost: lozinka AS400 i API tajna samo u Coolify secretima; servis ne sluša 
 
 > Neprovjereno: stvarno spajanje na AS400 (jt400) i Integration Hub. Provjereno: SQL → CSV (H2), pravila, potpis identičan PHP implementaciji, slanje na pravi portal (`FROM_DIR`), dnevni raspored. Integration Hub nije potreban za prvu verziju (pristupni podaci su u okolinskim varijablama); kasnije se može dodati kao izvor podataka po firmi.
 
+## Uključivanje i isključivanje cjenika
+
+Cjenik (`dijelovi`, `vozila`, `radovi`) koji lokacija nema isključuje se da pregled ne javlja „nedostaje” i da ga extractor ne pokušava slati. Pojedinačno u adminu (Lokacije → uredi) ili grupno iz terminala kontejnera:
+
+```bash
+# vozila isključena za lokacije bez vozila (popis je u seed/bez-vozila.txt)
+su -s /bin/sh www-data -c "php /var/www/app/bin/set-feeds.php vozila off @/var/www/seed/bez-vozila.txt"
+# jedan cjenik jedne lokacije; --dry-run samo ispiše što bi promijenio
+su -s /bin/sh www-data -c "php /var/www/app/bin/set-feeds.php dijelovi off km3/2"
+# ukloni isključenje: on; lokacije su grp/broj, samo grp (cijela koncesija), all ili @datoteka
+su -s /bin/sh www-data -c "php /var/www/app/bin/set-feeds.php radovi on all"
+```
+
+Promjene se bilježe u audit logu. Naredba je idempotentna (ponovno pokretanje ne mijenja ništa).
+
 ## Postavljanje na Hetzner Webhosting L
 
 > Stvari označene ⚠ nisam mogao provjeriti bez vašeg računa — potvrdi ih na hostingu prije produkcije (vidi dolje).
