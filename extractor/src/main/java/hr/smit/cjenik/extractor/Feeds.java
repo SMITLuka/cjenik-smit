@@ -31,7 +31,10 @@ public final class Feeds {
         "poseban_oblik_prodaje", "posebni_oblik_prodaje",
         "bazna_cijena_sa_pdvom", "bazna_cijena",
         "sidrena_cijena_sa_pdvom", "sidrena_cijena",
-        "raspolozivost", "dostupnost");
+        "raspolozivost", "dostupnost",
+        "naziv_robe", "naziv",
+        "sifra_robe", "sifra",
+        "cijena_za_jmj", "cijena_po_jedinici_mjere");
 
     /** Ako SQL ne vraca stupac, uzima se drugi: bazna i sidrena su na dan 10.9.2026. iste, najnizu zamjenjuje maloprodajna. */
     public static final Map<String, String> FALLBACK = Map.of(

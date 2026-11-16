@@ -213,6 +213,38 @@ class CsvBuilderTest {
     }
 
     @Test
+    void sqlVozilaSNazivimaRobeIJmj() throws Exception {
+        // SQL vozila v2: NAZIV_ROBE, SIFRA_ROBE, CIJENA_ZA_JMJ (=redovna), DOSTUPNO velikim slovima, visak stupac REFERENTNI_DATUM
+        try (Statement st = conn.createStatement()) {
+            st.execute("create table vz (txt varchar(40), sk varchar(20), mar varchar(3), p1 decimal(12,2), p2 decimal(12,2), sid decimal(12,2), mn decimal(12,2))");
+            st.execute("insert into vz values ('Clio', '161', 'RE', 10000.00, 9000.00, 10000.00, 8800.00)");
+            st.execute("insert into vz values (null, '162', 'DC', 8000.00, 8000.00, null, null)");
+        }
+        String q = "select txt as naziv_robe, sk as sifra_robe, mar as marka, '1' as neto_kolicina, 'KOM' as jmj,\n"
+            + "p1 as cijena_za_jmj, p2 as maloprodajna_cijena, case when p2 < p1 then 'DA' else 'NE' end as poseban_oblik_prodaje,\n"
+            + "case when p2 < p1 then 'AKCIJA' else '' end as naziv_posebnog_oblika_prodaje, sid as bazna_cijena, sid as sidrena_cijena,\n"
+            + "'10.09.2026' as referentni_datum, 'DOSTUPNO' as raspolozivost, mn as najniza_cijena_30_dana from vz order by sk";
+        CsvBuilder b = new CsvBuilder(sql("vozila", q));
+        String[] lines = build(b, List.of("vozila")).split("\n");
+        assertEquals(3, lines.length);
+        List<String> a = Arrays.asList(lines[1].split(";", -1));
+        assertEquals("Clio", a.get(0));
+        assertEquals("161", a.get(1));
+        assertEquals("Renault", a.get(2));
+        assertEquals("10000.00", a.get(5));
+        assertEquals("9000.00", a.get(6));
+        assertEquals("da", a.get(7));
+        assertEquals("AKCIJA", a.get(8));
+        assertEquals("10000.00", a.get(9));
+        assertEquals("dostupno", a.get(12));
+        assertEquals("8800.00", a.get(13));
+        List<String> c = Arrays.asList(lines[2].split(";", -1));
+        assertEquals("162", c.get(0), "prazan naziv -> sifra");
+        assertEquals("8000.00", c.get(9), "prazna sidrena -> maloprodajna");
+        assertEquals("8000.00", c.get(13));
+    }
+
+    @Test
     void viseDatotekaJednogIzvoraSeSpaja() throws Exception {
         Files.createDirectories(dir.resolve("sql/dijelovi"));
         Files.writeString(dir.resolve("sql/dijelovi/01.sql"), SELECT.replace("order by sifra", "where sifra = 'F1'"));

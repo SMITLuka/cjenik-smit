@@ -170,7 +170,7 @@ $UslugaCols = @('naziv_usluge', 'maloprodajna_cijena', 'posebni_oblik_prodaje', 
 # Ako SQL ne vraca kolonu, uzima se druga (bazna i sidrena su na dan 10.9.2026. ista; najnizu cijenu
 # bez povijesti zamjenjuje maloprodajna).
 # Drugi nazivi stupaca koje SQL smije koristiti (npr. SQL s nazivima kao u Excelu).
-$Aliases = @{ kat_broj = 'sifra'; jmj = 'jedinica_mjere'; cijena_za_jedinicu_mjere = 'cijena_po_jedinici_mjere'; poseban_oblik_prodaje = 'posebni_oblik_prodaje'; bazna_cijena_sa_pdvom = 'bazna_cijena'; sidrena_cijena_sa_pdvom = 'sidrena_cijena'; raspolozivost = 'dostupnost' }
+$Aliases = @{ kat_broj = 'sifra'; jmj = 'jedinica_mjere'; cijena_za_jedinicu_mjere = 'cijena_po_jedinici_mjere'; poseban_oblik_prodaje = 'posebni_oblik_prodaje'; bazna_cijena_sa_pdvom = 'bazna_cijena'; sidrena_cijena_sa_pdvom = 'sidrena_cijena'; raspolozivost = 'dostupnost'; naziv_robe = 'naziv'; sifra_robe = 'sifra'; cijena_za_jmj = 'cijena_po_jedinici_mjere' }
 $Fallback = @{ bazna_cijena = 'sidrena_cijena'; sidrena_cijena = 'bazna_cijena'; najniza_cijena_30_dana = 'maloprodajna_cijena' }
 # Dva cjenika po lokaciji: proizvodi (vozila i dijelovi u istoj datoteci, isti stupci) i radovi.
 $Header = @{ proizvodi = $ProizvodCols; radovi = $UslugaCols }
