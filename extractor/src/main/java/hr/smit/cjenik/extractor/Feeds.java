@@ -23,6 +23,16 @@ public final class Feeds {
     private static final Map<String, List<String>> SOURCES_OF = Map.of(
         "proizvodi", List.of("dijelovi", "vozila"), "radovi", List.of("radovi"));
 
+    /** Drugi nazivi stupaca koje SQL smije koristiti (npr. SQL s nazivima kao u Excelu); nazivi malim slovima. */
+    public static final Map<String, String> ALIASES = Map.of(
+        "kat_broj", "sifra",
+        "jmj", "jedinica_mjere",
+        "cijena_za_jedinicu_mjere", "cijena_po_jedinici_mjere",
+        "poseban_oblik_prodaje", "posebni_oblik_prodaje",
+        "bazna_cijena_sa_pdvom", "bazna_cijena",
+        "sidrena_cijena_sa_pdvom", "sidrena_cijena",
+        "raspolozivost", "dostupnost");
+
     /** Ako SQL ne vraca stupac, uzima se drugi: bazna i sidrena su na dan 10.9.2026. iste, najnizu zamjenjuje maloprodajna. */
     public static final Map<String, String> FALLBACK = Map.of(
         "bazna_cijena", "sidrena_cijena",

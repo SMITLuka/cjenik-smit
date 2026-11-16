@@ -93,23 +93,53 @@ function Save-PriceHistory($Hist, [string]$Path, [string]$Today) {
     Move-Item -Force -LiteralPath $tmp -Destination $Path
 }
 
+# Iznos kao tekst ili prazno ako nije valjan pozitivan iznos (cijena 0 u bazi znaci "nema podatka").
+function Get-PositiveOrEmpty([string]$s) {
+    $m = ConvertTo-MoneyOrNull $s
+    if ($null -eq $m -or $m -le 0) { return '' }
+    return $s
+}
+
 # ---- pravila po retku
 # $Vals: hashtable stupac -> tekst (vec ociscen); $Idx: stupci koje je SQL stvarno vratio;
-# $Hist: povijest cijena ili $null kad SQL sam vraca najnizu cijenu.
+# $Hist: povijest cijena ili $null; $SqlNajniza: SQL vraca stupac najniza_cijena_30_dana (prazna vrijednost se dopunjuje).
 # Vraca $true ako je povijest izmijenjena.
-function Complete-Row([hashtable]$Vals, [hashtable]$Idx, [string[]]$Cols, $Hist, [string]$Today) {
+function Complete-Row([hashtable]$Vals, [hashtable]$Idx, [string[]]$Cols, $Hist, [string]$Today, $SqlNajniza = $null) {
+    if ($null -eq $SqlNajniza) { $SqlNajniza = ($null -eq $Hist) }
     $changed = $false
     $mal = ConvertTo-MoneyOrNull $Vals['maloprodajna_cijena']
+
+    # da/ne i dostupnost: SQL smije vracati DA/NE; portal trazi da/ne i dostupno/nedostupno
+    if ($Vals.ContainsKey('posebni_oblik_prodaje')) { $Vals['posebni_oblik_prodaje'] = $Vals['posebni_oblik_prodaje'].ToLower() }
+    if ($Vals.ContainsKey('dostupnost')) {
+        $d = $Vals['dostupnost'].ToLower()
+        if ($d -eq 'da') { $d = 'dostupno' } elseif ($d -eq 'ne') { $d = 'nedostupno' }
+        $Vals['dostupnost'] = $d
+    }
+
+    # neto kolicina i jedinica mjere: po specifikaciji 1 KOM kad ih SQL ne daje
+    if ($Vals.ContainsKey('neto_kolicina') -and $Vals['neto_kolicina'] -eq '') { $Vals['neto_kolicina'] = '1' }
+    if ($Vals.ContainsKey('jedinica_mjere') -and $Vals['jedinica_mjere'] -eq '') { $Vals['jedinica_mjere'] = 'KOM' }
+
+    # bazna i sidrena su na dan 10.9.2026. iste; ako su obje prazne, vrijedi maloprodajna
+    if ($Vals.ContainsKey('sidrena_cijena') -or $Vals.ContainsKey('bazna_cijena')) {
+        $bz = if ($Vals.ContainsKey('bazna_cijena')) { Get-PositiveOrEmpty $Vals['bazna_cijena'] } else { '' }
+        $sd = if ($Vals.ContainsKey('sidrena_cijena')) { Get-PositiveOrEmpty $Vals['sidrena_cijena'] } else { '' }
+        if ($bz -eq '' -and $sd -ne '') { $bz = $sd }
+        elseif ($sd -eq '' -and $bz -ne '') { $sd = $bz }
+        elseif ($bz -eq '' -and $null -ne $mal) { $bz = $mal.ToString('0.00##', $Inv); $sd = $bz }
+        if ($Vals.ContainsKey('bazna_cijena')) { $Vals['bazna_cijena'] = $bz }
+        if ($Vals.ContainsKey('sidrena_cijena')) { $Vals['sidrena_cijena'] = $sd }
+    }
     $sid = ConvertTo-MoneyOrNull $Vals['sidrena_cijena']
 
-    # barkod: samo 8-14 znamenki, inace prazno (portal odbija cijelu datoteku zbog jednog losog barkoda)
+    # barkod: samo 8-14 znamenki, inace prazno
     if ($Vals.ContainsKey('barkod')) {
         $digits = ($Vals['barkod'] -replace '\D', '')
         $Vals['barkod'] = if ($digits.Length -ge 8 -and $digits.Length -le 14) { $digits } else { '' }
     }
 
-    # marka: sifra marke iz DMS-a (npr. RE) -> naziv; nepoznata ili prazna sifra = Ostale marke.
-    # Vrijednosti dulje od 2 znaka (SQL je vec vratio naziv) ostaju kako jesu.
+    # marka: sifra -> naziv; vrijednosti dulje od 2 znaka ostaju; nepoznata ili prazna = Ostale marke
     if ($Vals.ContainsKey('marka')) {
         $m = $Vals['marka']
         if ($m.Length -le 2) {
@@ -117,31 +147,39 @@ function Complete-Row([hashtable]$Vals, [hashtable]$Idx, [string[]]$Cols, $Hist,
         }
     }
 
-    # poseban oblik prodaje: ako SQL ne vraca, cijena ispod cijene na dan 10.9.2026. znaci AKCIJA
-    if (-not $Idx.ContainsKey('posebni_oblik_prodaje')) {
-        if ($null -ne $mal -and $null -ne $sid -and $mal -lt $sid) {
-            $Vals['posebni_oblik_prodaje'] = 'da'
-            if ($Vals['naziv_posebnog_oblika_prodaje'] -eq '') { $Vals['naziv_posebnog_oblika_prodaje'] = 'AKCIJA' }
-        } else {
-            $Vals['posebni_oblik_prodaje'] = 'ne'
+    # poseban oblik prodaje: cijena ispod cijene na dan 10.9.2026. = AKCIJA (i kad SQL tvrdi "ne"); SQL "da" ostaje
+    $below = ($null -ne $mal -and $null -ne $sid -and $mal -lt $sid)
+    $pob = if ($Vals.ContainsKey('posebni_oblik_prodaje')) { $Vals['posebni_oblik_prodaje'] } else { '' }
+    if ($below -and $pob -ne 'da') {
+        $Vals['posebni_oblik_prodaje'] = 'da'
+        if ($Vals['naziv_posebnog_oblika_prodaje'] -eq '') { $Vals['naziv_posebnog_oblika_prodaje'] = 'AKCIJA' }
+    } elseif ($pob -eq '') {
+        $Vals['posebni_oblik_prodaje'] = 'ne'
+    }
+
+    # cijena za jedinicu mjere (bez popusta): prazna ili jednaka maloprodajnoj kod akcije -> veca od maloprodajne i sidrene
+    if (($Cols -contains 'cijena_po_jedinici_mjere') -and $null -ne $mal) {
+        $cur = if ($Vals.ContainsKey('cijena_po_jedinici_mjere')) { $Vals['cijena_po_jedinici_mjere'] } else { '' }
+        $curM = ConvertTo-MoneyOrNull $cur
+        $reg = if ($null -ne $sid -and $sid -gt $mal) { $sid } else { $mal }
+        if ($cur -eq '' -or ($below -and $null -ne $curM -and $curM -eq $mal)) {
+            $Vals['cijena_po_jedinici_mjere'] = $reg.ToString('0.00##', $Inv)
         }
     }
 
-    # cijena za jedinicu mjere (bez popusta): ako SQL ne vraca, vrijedi veca od maloprodajne i cijene na dan 10.9.2026.
-    if (($Cols -contains 'cijena_po_jedinici_mjere') -and -not $Idx.ContainsKey('cijena_po_jedinici_mjere') -and $null -ne $mal) {
-        $reg = if ($null -ne $sid -and $sid -gt $mal) { $sid } else { $mal }
-        $Vals['cijena_po_jedinici_mjere'] = $reg.ToString('0.00##', $Inv)
-    }
-
-    # najniza cijena u zadnjih 30 dana: iz povijesti agenta (kljuc = sifra, kod usluga naziv)
+    # najniza cijena u zadnjih 30 dana: iz SQL-a ako je vratio vrijednost, inace iz povijesti (kljuc = sifra + marka)
+    $sqlHas = ($SqlNajniza -and $Vals.ContainsKey('najniza_cijena_30_dana') -and (Get-PositiveOrEmpty $Vals['najniza_cijena_30_dana']) -ne '')
     if ($null -ne $Hist -and $null -ne $mal) {
-        # kljuc: sifra + marka (u bazi ista sifra moze postojati za vise marki), kod usluga naziv
         $key = if ($Vals.ContainsKey('sifra')) { $Vals['sifra'] } else { $Vals['naziv_usluge'] }
         if ($key -ne '' -and $Vals.ContainsKey('marka') -and $Vals['marka'] -ne '') { $key = $key + '|' + $Vals['marka'] }
         if ($key -ne '') {
             if (Update-PriceHistory $Hist $key $mal $Today) { $changed = $true }
-            $Vals['najniza_cijena_30_dana'] = (Get-Lowest30 $Hist $key $mal $Today).ToString('0.00##', $Inv)
+            if (-not $sqlHas) { $Vals['najniza_cijena_30_dana'] = (Get-Lowest30 $Hist $key $mal $Today).ToString('0.00##', $Inv) }
+        } elseif (-not $sqlHas) {
+            $Vals['najniza_cijena_30_dana'] = $mal.ToString('0.00##', $Inv)
         }
+    } elseif (-not $sqlHas -and $null -ne $mal -and $Vals.ContainsKey('najniza_cijena_30_dana')) {
+        $Vals['najniza_cijena_30_dana'] = $mal.ToString('0.00##', $Inv)
     }
     return $changed
 }

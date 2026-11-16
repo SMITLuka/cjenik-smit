@@ -48,6 +48,12 @@ public final class RowRules {
         return r.toPlainString();
     }
 
+    /** Iznos kao tekst ili prazno ako nije valjan pozitivan iznos (cijena 0 u bazi znaci "nema podatka"). */
+    static String positiveOrEmpty(String s) {
+        BigDecimal m = money(s);
+        return (m == null || m.signum() <= 0) ? "" : s;
+    }
+
     public static BigDecimal money(String s) {
         if (s == null || !MONEY.matcher(s).matches()) {
             return null;
@@ -55,16 +61,65 @@ public final class RowRules {
         return new BigDecimal(s);
     }
 
+    /** Zadrzava staro ponasanje: hist == null znaci da SQL sam vraca najnizu cijenu. */
+    public static boolean complete(Map<String, String> v, Set<String> sqlCols, List<String> cols,
+                                   PriceHistory hist, String today) {
+        return complete(v, sqlCols, cols, hist, today, hist == null);
+    }
+
     /**
-     * @param v       stupac -> tekst (vec ociscen); mijenja se
-     * @param sqlCols stupci koje je SQL stvarno vratio (nakon zamjene bazna/sidrena)
-     * @param hist    povijest cijena, ili null kad SQL sam vraca najnizu cijenu
+     * @param v          stupac -> tekst (vec ociscen); mijenja se
+     * @param sqlCols    stupci koje je SQL stvarno vratio (nakon zamjene bazna/sidrena)
+     * @param hist       povijest cijena (null = ne vodi se)
+     * @param sqlNajniza true ako SQL vraca stupac najniza_cijena_30_dana (prazna vrijednost se i dalje dopunjuje)
      * @return true ako je povijest izmijenjena
      */
     public static boolean complete(Map<String, String> v, Set<String> sqlCols, List<String> cols,
-                                   PriceHistory hist, String today) {
+                                   PriceHistory hist, String today, boolean sqlNajniza) {
         boolean changed = false;
         BigDecimal mal = money(v.get("maloprodajna_cijena"));
+
+        // da/ne i dostupnost: SQL smije vracati DA/NE; portal trazi da/ne i dostupno/nedostupno
+        if (v.containsKey("posebni_oblik_prodaje")) {
+            v.put("posebni_oblik_prodaje", v.get("posebni_oblik_prodaje").toLowerCase(Locale.ROOT));
+        }
+        if (v.containsKey("dostupnost")) {
+            String d = v.get("dostupnost").toLowerCase(Locale.ROOT);
+            if (d.equals("da")) {
+                d = "dostupno";
+            } else if (d.equals("ne")) {
+                d = "nedostupno";
+            }
+            v.put("dostupnost", d);
+        }
+
+        // neto kolicina i jedinica mjere: po specifikaciji 1 KOM kad ih SQL ne daje (cijena po jedinici trazi jedinicu)
+        if (v.containsKey("neto_kolicina") && v.get("neto_kolicina").isEmpty()) {
+            v.put("neto_kolicina", "1");
+        }
+        if (v.containsKey("jedinica_mjere") && v.get("jedinica_mjere").isEmpty()) {
+            v.put("jedinica_mjere", "KOM");
+        }
+
+        // bazna i sidrena su na dan 10.9.2026. iste; ako su obje prazne (nema povijesti cijene), vrijedi maloprodajna
+        if (v.containsKey("sidrena_cijena") || v.containsKey("bazna_cijena")) {
+            String bz = positiveOrEmpty(v.getOrDefault("bazna_cijena", ""));
+            String sd = positiveOrEmpty(v.getOrDefault("sidrena_cijena", ""));
+            if (bz.isEmpty() && !sd.isEmpty()) {
+                bz = sd;
+            } else if (sd.isEmpty() && !bz.isEmpty()) {
+                sd = bz;
+            } else if (bz.isEmpty() && mal != null) {
+                bz = fmt(mal);
+                sd = bz;
+            }
+            if (v.containsKey("bazna_cijena")) {
+                v.put("bazna_cijena", bz);
+            }
+            if (v.containsKey("sidrena_cijena")) {
+                v.put("sidrena_cijena", sd);
+            }
+        }
         BigDecimal sid = money(v.get("sidrena_cijena"));
 
         // barkod: samo 8-14 znamenki, inace prazno (portal odbija cijelu datoteku zbog jednog losog barkoda)
@@ -82,25 +137,30 @@ public final class RowRules {
             }
         }
 
-        // poseban oblik prodaje: ako SQL ne vraca, cijena ispod cijene na dan 10.9.2026. znaci AKCIJA
-        if (!sqlCols.contains("posebni_oblik_prodaje")) {
-            if (mal != null && sid != null && mal.compareTo(sid) < 0) {
-                v.put("posebni_oblik_prodaje", "da");
-                if (v.getOrDefault("naziv_posebnog_oblika_prodaje", "").isEmpty()) {
-                    v.put("naziv_posebnog_oblika_prodaje", "AKCIJA");
-                }
-            } else {
-                v.put("posebni_oblik_prodaje", "ne");
+        // poseban oblik prodaje: cijena ispod cijene na dan 10.9.2026. = AKCIJA (i kad SQL tvrdi "ne"); SQL "da" ostaje
+        boolean below = mal != null && sid != null && mal.compareTo(sid) < 0;
+        String pob = v.getOrDefault("posebni_oblik_prodaje", "");
+        if (below && !pob.equals("da")) {
+            v.put("posebni_oblik_prodaje", "da");
+            if (v.getOrDefault("naziv_posebnog_oblika_prodaje", "").isEmpty()) {
+                v.put("naziv_posebnog_oblika_prodaje", "AKCIJA");
+            }
+        } else if (pob.isEmpty()) {
+            v.put("posebni_oblik_prodaje", "ne");
+        }
+
+        // cijena za jedinicu mjere (bez popusta): prazna ili jednaka maloprodajnoj kod akcije -> veca od maloprodajne i sidrene
+        if (cols.contains("cijena_po_jedinici_mjere") && mal != null) {
+            String cur = v.getOrDefault("cijena_po_jedinici_mjere", "");
+            BigDecimal curM = money(cur);
+            BigDecimal reg = (sid != null && sid.compareTo(mal) > 0) ? sid : mal;
+            if (cur.isEmpty() || (below && curM != null && curM.compareTo(mal) == 0)) {
+                v.put("cijena_po_jedinici_mjere", fmt(reg));
             }
         }
 
-        // cijena za jedinicu mjere (bez popusta): veca od maloprodajne i cijene na dan 10.9.2026.
-        if (cols.contains("cijena_po_jedinici_mjere") && !sqlCols.contains("cijena_po_jedinici_mjere") && mal != null) {
-            BigDecimal reg = (sid != null && sid.compareTo(mal) > 0) ? sid : mal;
-            v.put("cijena_po_jedinici_mjere", fmt(reg));
-        }
-
-        // najniza cijena u zadnjih 30 dana iz povijesti (kljuc = sifra + marka; kod usluga naziv)
+        // najniza cijena u zadnjih 30 dana: iz SQL-a ako je vratio vrijednost, inace iz povijesti (kljuc = sifra + marka)
+        boolean sqlHas = sqlNajniza && !positiveOrEmpty(v.getOrDefault("najniza_cijena_30_dana", "")).isEmpty();
         if (hist != null && mal != null) {
             String key = v.containsKey("sifra") ? v.get("sifra") : v.getOrDefault("naziv_usluge", "");
             if (!key.isEmpty() && v.containsKey("marka") && !v.get("marka").isEmpty()) {
@@ -110,8 +170,14 @@ public final class RowRules {
                 if (hist.update(key, mal, today)) {
                     changed = true;
                 }
-                v.put("najniza_cijena_30_dana", fmt(hist.lowest30(key, mal, today)));
+                if (!sqlHas) {
+                    v.put("najniza_cijena_30_dana", fmt(hist.lowest30(key, mal, today)));
+                }
+            } else if (!sqlHas) {
+                v.put("najniza_cijena_30_dana", fmt(mal));
             }
+        } else if (!sqlHas && mal != null && v.containsKey("najniza_cijena_30_dana")) {
+            v.put("najniza_cijena_30_dana", fmt(mal));
         }
         return changed;
     }

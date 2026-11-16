@@ -17,6 +17,7 @@ foreach ($f in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Lan
 $TextCols = @('naziv', 'naziv_usluge', 'sifra', 'marka', 'jedinica_mjere', 'naziv_posebnog_oblika_prodaje')
 $ProizvodCols = @('naziv', 'sifra', 'marka', 'neto_kolicina', 'jedinica_mjere', 'cijena_po_jedinici_mjere', 'maloprodajna_cijena', 'posebni_oblik_prodaje', 'naziv_posebnog_oblika_prodaje', 'bazna_cijena', 'sidrena_cijena', 'barkod', 'dostupnost', 'najniza_cijena_30_dana')
 $Header = @{ proizvodi = $ProizvodCols }
+$Aliases = @{ kat_broj = 'sifra'; jmj = 'jedinica_mjere'; cijena_za_jedinicu_mjere = 'cijena_po_jedinici_mjere'; poseban_oblik_prodaje = 'posebni_oblik_prodaje'; bazna_cijena_sa_pdvom = 'bazna_cijena'; sidrena_cijena_sa_pdvom = 'sidrena_cijena'; raspolozivost = 'dostupnost' }
 $Fallback = @{ bazna_cijena = 'sidrena_cijena'; sidrena_cijena = 'bazna_cijena'; najniza_cijena_30_dana = 'maloprodajna_cijena' }
 $OptionalCols = @('marka', 'neto_kolicina', 'jedinica_mjere', 'naziv_posebnog_oblika_prodaje', 'barkod')
 $DerivedCols = @('cijena_po_jedinici_mjere', 'posebni_oblik_prodaje', 'najniza_cijena_30_dana')

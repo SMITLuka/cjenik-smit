@@ -169,6 +169,8 @@ $ProizvodCols = @('naziv', 'sifra', 'marka', 'neto_kolicina', 'jedinica_mjere', 
 $UslugaCols = @('naziv_usluge', 'maloprodajna_cijena', 'posebni_oblik_prodaje', 'naziv_posebnog_oblika_prodaje', 'bazna_cijena', 'sidrena_cijena', 'najniza_cijena_30_dana')
 # Ako SQL ne vraca kolonu, uzima se druga (bazna i sidrena su na dan 10.9.2026. ista; najnizu cijenu
 # bez povijesti zamjenjuje maloprodajna).
+# Drugi nazivi stupaca koje SQL smije koristiti (npr. SQL s nazivima kao u Excelu).
+$Aliases = @{ kat_broj = 'sifra'; jmj = 'jedinica_mjere'; cijena_za_jedinicu_mjere = 'cijena_po_jedinici_mjere'; poseban_oblik_prodaje = 'posebni_oblik_prodaje'; bazna_cijena_sa_pdvom = 'bazna_cijena'; sidrena_cijena_sa_pdvom = 'sidrena_cijena'; raspolozivost = 'dostupnost' }
 $Fallback = @{ bazna_cijena = 'sidrena_cijena'; sidrena_cijena = 'bazna_cijena'; najniza_cijena_30_dana = 'maloprodajna_cijena' }
 # Dva cjenika po lokaciji: proizvodi (vozila i dijelovi u istoj datoteci, isti stupci) i radovi.
 $Header = @{ proizvodi = $ProizvodCols; radovi = $UslugaCols }
@@ -262,15 +264,19 @@ function New-CsvFromSql([string]$Grp, [int]$Betnr, [string]$Feed, [string[]]$Src
             try {
                 $idx = @{}
                 for ($i = 0; $i -lt $rd.FieldCount; $i++) { $idx[$rd.GetName($i).ToLower()] = $i }
-                # najnizu cijenu u 30 dana racuna agent iz svoje povijesti samo ako je SQL ne vraca
-                $rowHist = if ($idx.ContainsKey('najniza_cijena_30_dana')) { $null } else { $hist }
+                # drugi nazivi stupaca (npr. KAT_BROJ -> sifra); izvorni naziv ima prednost
+                foreach ($ak in @($Aliases.Keys)) {
+                    if ($idx.ContainsKey($ak) -and -not $idx.ContainsKey($Aliases[$ak])) { $idx[$Aliases[$ak]] = $idx[$ak] }
+                }
+                # najnizu cijenu u 30 dana racuna agent iz povijesti kad je SQL ne vraca ili je vrati praznu
+                $sqlNajniza = $idx.ContainsKey('najniza_cijena_30_dana')
                 foreach ($k in @($Fallback.Keys)) {
                     if (-not $idx.ContainsKey($k) -and $idx.ContainsKey($Fallback[$k])) { $idx[$k] = $idx[$Fallback[$k]] }
                 }
                 foreach ($c in $cols) {
                     if (-not $idx.ContainsKey($c) -and $OptionalCols -notcontains $c -and $DerivedCols -notcontains $c) { throw "$($file.Name): SQL ne vraca kolonu '$c' (alias u SELECT-u)." }
                 }
-                $fileRows = 0
+                $fileRows = 0; $skipped = 0
                 while ($rd.Read()) {
                     $vals = @{}
                     foreach ($c in $cols) {
@@ -282,12 +288,15 @@ function New-CsvFromSql([string]$Grp, [int]$Betnr, [string]$Feed, [string[]]$Src
                     foreach ($nc in @('naziv', 'naziv_usluge')) {
                         if ($vals.ContainsKey($nc) -and $vals[$nc] -eq '' -and $vals.ContainsKey('sifra')) { $vals[$nc] = $vals['sifra'] }
                     }
-                    if (Complete-Row $vals $idx $cols $rowHist $today) { $histChanged = $true }
+                    if (Complete-Row $vals $idx $cols $hist $today $sqlNajniza) { $histChanged = $true }
+                    $price = ConvertTo-MoneyOrNull $vals['maloprodajna_cijena']
+                    if ($null -eq $price -or $price -le 0) { $skipped++; continue }
                     $cells = foreach ($c in $cols) { ConvertTo-CsvField $vals[$c] }
                     [void]$sb.Append(($cells -join ';')).Append("`n")
                     $n++; $srcRows++; $fileRows++
                 }
             } finally { $rd.Close() }
+            if ($skipped -gt 0) { Write-Log 'WARN' "  ${Grp}/${Betnr}/${Feed}: $($file.Name): preskoceno $skipped redaka bez valjane maloprodajne cijene" }
             Write-Log 'INFO' "  ${Grp}/${Betnr}/${Feed}: ${src}/$($file.Name) -> $fileRows redaka"
         }
         if ($histChanged) { Save-PriceHistory $hist $histPath $today }

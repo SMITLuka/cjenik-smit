@@ -29,10 +29,22 @@ $v = NewVals '50.00' '50.00'
 T 'jednake cijene nisu akcija' ($v['posebni_oblik_prodaje'] -eq 'ne')
 
 # ako SQL sam vraca oblik prodaje ili cijenu po jedinici, agent ih ne dira
-$v = NewVals '80.00' '100.00'; $v['posebni_oblik_prodaje'] = 'ne'; $v['cijena_po_jedinici_mjere'] = '77.00'
+$v = NewVals '80.00' '100.00'; $v['posebni_oblik_prodaje'] = 'da'; $v['naziv_posebnog_oblika_prodaje'] = 'Rasprodaja'; $v['cijena_po_jedinici_mjere'] = '77.00'
 $idxFull = @{ sifra = 0; maloprodajna_cijena = 1; sidrena_cijena = 2; posebni_oblik_prodaje = 3; cijena_po_jedinici_mjere = 4 }
 [void](Complete-Row $v $idxFull $cols $null '2026-11-17')
-T 'vrijednosti iz SQL-a ostaju' ($v['posebni_oblik_prodaje'] -eq 'ne' -and $v['cijena_po_jedinici_mjere'] -eq '77.00')
+T 'vrijednosti iz SQL-a ostaju (poseban oblik da, naziv, cijena po jedinici)' ($v['posebni_oblik_prodaje'] -eq 'da' -and $v['naziv_posebnog_oblika_prodaje'] -eq 'Rasprodaja' -and $v['cijena_po_jedinici_mjere'] -eq '77.00')
+$v = NewVals '80.00' '100.00'; $v['posebni_oblik_prodaje'] = 'NE'; $v['cijena_po_jedinici_mjere'] = '80.00'
+[void](Complete-Row $v $idxFull $cols $null '2026-11-17')
+T 'SQL kaze NE, ali je cijena ispod sidrene: AKCIJA i cijena bez popusta' ($v['posebni_oblik_prodaje'] -eq 'da' -and $v['naziv_posebnog_oblika_prodaje'] -eq 'AKCIJA' -and $v['cijena_po_jedinici_mjere'] -eq '100.00')
+
+# normalizacije i zadane vrijednosti
+$cn = @('posebni_oblik_prodaje', 'dostupnost', 'neto_kolicina', 'jedinica_mjere', 'maloprodajna_cijena', 'bazna_cijena', 'sidrena_cijena', 'najniza_cijena_30_dana')
+$n = @{ posebni_oblik_prodaje = 'NE'; dostupnost = 'DA'; neto_kolicina = ''; jedinica_mjere = ''; maloprodajna_cijena = '12.00'; bazna_cijena = ''; sidrena_cijena = ''; najniza_cijena_30_dana = '' }
+[void](Complete-Row $n @{ posebni_oblik_prodaje = 0; dostupnost = 1; najniza_cijena_30_dana = 2 } $cn $null '2026-11-17' $true)
+T 'DA/NE se normaliziraju (dostupno, ne)' ($n['dostupnost'] -eq 'dostupno' -and $n['posebni_oblik_prodaje'] -eq 'ne')
+T 'neto 1 i jedinica KOM kad fale' ($n['neto_kolicina'] -eq '1' -and $n['jedinica_mjere'] -eq 'KOM')
+T 'prazna bazna i sidrena = maloprodajna' ($n['bazna_cijena'] -eq '12.00' -and $n['sidrena_cijena'] -eq '12.00')
+T 'prazna najniza iz SQL-a = maloprodajna (bez povijesti)' ($n['najniza_cijena_30_dana'] -eq '12.00')
 
 # barkod
 $v = NewVals '1.00' '1.00' 'A1' '3850000000011'; [void](Complete-Row $v $idxNone $cols $null '2026-11-17')
@@ -91,6 +103,11 @@ T 'FA=Farizon, GM=General Motors, GL=Geely' ((MarkaZa 'FA') -eq 'Farizon' -and (
 T 'XX, nepoznata, prazna i zvjezdica = Ostale marke' ((MarkaZa 'XX') -eq 'Ostale marke' -and (MarkaZa 'ZZ') -eq 'Ostale marke' -and (MarkaZa '') -eq 'Ostale marke' -and (MarkaZa '*') -eq 'Ostale marke' -and (MarkaZa 'LM') -eq 'Ostale marke')
 T 'naziv iz SQL-a ostaje kako jest' ((MarkaZa 'Renault') -eq 'Renault' -and (MarkaZa 'Ostale marke') -eq 'Ostale marke')
 T 'MT=Mitsubishi, MI=Mini, IS=Isuzu' ((MarkaZa 'MT') -eq 'Mitsubishi' -and (MarkaZa 'MI') -eq 'Mini' -and (MarkaZa 'IS') -eq 'Isuzu')
+
+# nula iz SQL-a za najnizu i sidrenu cijenu = nema podatka
+$z = @{ sifra = 'X1'; maloprodajna_cijena = '140.36'; bazna_cijena = '0.00'; sidrena_cijena = '0.00'; najniza_cijena_30_dana = '0.00'; posebni_oblik_prodaje = 'ne'; naziv_posebnog_oblika_prodaje = '' }
+[void](Complete-Row $z @{ sifra = 0; bazna_cijena = 1; sidrena_cijena = 2; najniza_cijena_30_dana = 3 } @('sifra','maloprodajna_cijena','bazna_cijena','sidrena_cijena','najniza_cijena_30_dana','posebni_oblik_prodaje') @{} '2027-03-01' $true)
+T 'nula za najnizu/sidrenu/baznu = maloprodajna' ($z['najniza_cijena_30_dana'] -eq '140.36' -and $z['sidrena_cijena'] -eq '140.36' -and $z['bazna_cijena'] -eq '140.36')
 
 # bez povijesti (SQL sam vraca najnizu) agent ne dira stupac
 $v = NewVals '70.00' '100.00'; $v['najniza_cijena_30_dana'] = '65.00'

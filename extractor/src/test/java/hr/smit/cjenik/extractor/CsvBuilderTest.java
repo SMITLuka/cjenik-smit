@@ -175,6 +175,44 @@ class CsvBuilderTest {
     }
 
     @Test
+    void sqlSNazivimaStupacaKaoUExcelu() throws Exception {
+        // novi SQL: KAT_BROJ, JMJ, RASPOLOZIVOST DA/NE, POSEBAN_OBLIK_PRODAJE 'NE', prazne najnize i sidrene cijene
+        try (Statement st = conn.createStatement()) {
+            st.execute("create table rd (etstxt varchar(40), etskey varchar(20), etsmar varchar(3), etomng decimal(9,2), etsmngeh varchar(4), etsvp decimal(12,2), sid decimal(12,2), mn decimal(12,2), etsmng decimal(9,2))");
+            st.execute("insert into rd values ('Filter', 'F1', 'MA', 5, '', 80.00, 100.00, 70.00, 5)");
+            st.execute("insert into rd values ('Svijeca', 'S1', 'XX', 2, 'L', 20.00, null, null, 0)");
+            st.execute("insert into rd values ('Bez cijene', 'N1', 'RE', 1, '', 0, 10.00, 10.00, 1)");
+        }
+        String q = "select etstxt as NAZIV, etskey as KAT_BROJ, etsmar as MARKA, etomng as KOLICINA, etsmngeh as JMJ,\n"
+            + "etsvp as CIJENA_ZA_JEDINICU_MJERE, etsvp as MALOPRODAJNA_CIJENA, 'NE' as POSEBAN_OBLIK_PRODAJE,\n"
+            + "' ' as NAZIV_POSEBNOG_OBLIKA_PRODAJE, sid as BAZNA_CIJENA_SA_PDVOM, sid as SIDRENA_CIJENA_SA_PDVOM,\n"
+            + "case when etsmng > 0 then 'DA' else 'NE' end as RASPOLOZIVOST, mn as NAJNIZA_CIJENA_30_DANA from rd order by etskey";
+        CsvBuilder b = new CsvBuilder(sql("dijelovi", q));
+        String csv = build(b, List.of("dijelovi"));
+        String[] lines = csv.split("\n");
+        assertEquals(3, lines.length, "zaglavlje + 2 retka; redak s cijenom 0 je preskocen");
+        List<String> f = Arrays.asList(lines[1].split(";", -1));
+        assertEquals("Filter", f.get(0));
+        assertEquals("F1", f.get(1));
+        assertEquals("Mazda", f.get(2));
+        assertEquals("1", f.get(3));          // neto kolicina (KOLICINA je zaliha, ne neto kolicina)
+        assertEquals("KOM", f.get(4));        // JMJ prazan -> KOM
+        assertEquals("100.00", f.get(5));     // akcija: cijena bez popusta
+        assertEquals("80.00", f.get(6));
+        assertEquals("da", f.get(7));         // SQL kaze NE, ali je cijena ispod sidrene
+        assertEquals("AKCIJA", f.get(8));
+        assertEquals("100.00", f.get(9));
+        assertEquals("100.00", f.get(10));
+        assertEquals("dostupno", f.get(12));  // RASPOLOZIVOST DA
+        assertEquals("70.00", f.get(13));     // najniza iz SQL-a
+        List<String> s = Arrays.asList(lines[2].split(";", -1));
+        assertEquals("L", s.get(4));
+        assertEquals("20.00", s.get(9), "prazna sidrena = maloprodajna");
+        assertEquals("nedostupno", s.get(12));
+        assertEquals("20.00", s.get(13), "prazna najniza -> iz povijesti (danas = maloprodajna)");
+    }
+
+    @Test
     void viseDatotekaJednogIzvoraSeSpaja() throws Exception {
         Files.createDirectories(dir.resolve("sql/dijelovi"));
         Files.writeString(dir.resolve("sql/dijelovi/01.sql"), SELECT.replace("order by sifra", "where sifra = 'F1'"));

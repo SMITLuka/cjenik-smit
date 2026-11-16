@@ -34,3 +34,6 @@ public_html/sitemap.xml
 
 *.sqlite
 .claude/
+
+# popisi poveznica i ostali radni CSV-ovi
+podaci/*.csv

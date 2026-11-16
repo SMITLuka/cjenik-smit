@@ -62,14 +62,109 @@ class RowRulesTest {
     @Test
     void vrijednostiIzSqlaSeNeDiraju() {
         Map<String, String> v = row("80.00", "100.00");
-        v.put("posebni_oblik_prodaje", "ne");
+        v.put("posebni_oblik_prodaje", "da");
+        v.put("naziv_posebnog_oblika_prodaje", "Rasprodaja");
         v.put("cijena_po_jedinici_mjere", "77.00");
         Set<String> cols = new HashSet<>(NONE);
         cols.add("posebni_oblik_prodaje");
         cols.add("cijena_po_jedinici_mjere");
         RowRules.complete(v, cols, COLS, null, "2026-11-17");
-        assertEquals("ne", v.get("posebni_oblik_prodaje"));
+        assertEquals("da", v.get("posebni_oblik_prodaje"));
+        assertEquals("Rasprodaja", v.get("naziv_posebnog_oblika_prodaje"));
         assertEquals("77.00", v.get("cijena_po_jedinici_mjere"));
+    }
+
+    @Test
+    void sqlKojiKazeNeAkoJeCijenaIspodSidreneJeAkcija() {
+        Map<String, String> v = row("80.00", "100.00");
+        v.put("posebni_oblik_prodaje", "NE");
+        v.put("cijena_po_jedinici_mjere", "80.00");
+        Set<String> cols = new HashSet<>(NONE);
+        cols.add("posebni_oblik_prodaje");
+        cols.add("cijena_po_jedinici_mjere");
+        RowRules.complete(v, cols, COLS, null, "2026-11-17");
+        assertEquals("da", v.get("posebni_oblik_prodaje"));
+        assertEquals("AKCIJA", v.get("naziv_posebnog_oblika_prodaje"));
+        assertEquals("100.00", v.get("cijena_po_jedinici_mjere"), "cijena bez popusta, ne maloprodajna");
+    }
+
+    @Test
+    void normalizacijaDaNeIDostupnosti() {
+        List<String> cols = List.of("posebni_oblik_prodaje", "dostupnost", "maloprodajna_cijena", "sidrena_cijena");
+        Map<String, String> v = new LinkedHashMap<>();
+        v.put("posebni_oblik_prodaje", "NE");
+        v.put("dostupnost", "DA");
+        v.put("maloprodajna_cijena", "5.00");
+        v.put("sidrena_cijena", "5.00");
+        RowRules.complete(v, Set.of("posebni_oblik_prodaje", "dostupnost", "maloprodajna_cijena", "sidrena_cijena"), cols, null, "2026-11-17");
+        assertEquals("ne", v.get("posebni_oblik_prodaje"));
+        assertEquals("dostupno", v.get("dostupnost"));
+        v.put("dostupnost", "NE");
+        RowRules.complete(v, Set.of("dostupnost"), cols, null, "2026-11-17");
+        assertEquals("nedostupno", v.get("dostupnost"));
+    }
+
+    @Test
+    void neto1IJedinicaKomKadFale() {
+        List<String> cols = List.of("neto_kolicina", "jedinica_mjere", "maloprodajna_cijena", "sidrena_cijena", "cijena_po_jedinici_mjere");
+        Map<String, String> v = new LinkedHashMap<>();
+        v.put("neto_kolicina", "");
+        v.put("jedinica_mjere", "");
+        v.put("maloprodajna_cijena", "5.00");
+        v.put("sidrena_cijena", "5.00");
+        v.put("cijena_po_jedinici_mjere", "5.00");
+        RowRules.complete(v, Set.of("jedinica_mjere", "cijena_po_jedinici_mjere"), cols, null, "2026-11-17");
+        assertEquals("1", v.get("neto_kolicina"));
+        assertEquals("KOM", v.get("jedinica_mjere"));
+        v.put("jedinica_mjere", "L");
+        RowRules.complete(v, Set.of("jedinica_mjere"), cols, null, "2026-11-17");
+        assertEquals("L", v.get("jedinica_mjere"), "postojeca jedinica ostaje");
+    }
+
+    @Test
+    void prazneSidrenaIBaznaDopunjuju() {
+        List<String> cols = List.of("maloprodajna_cijena", "bazna_cijena", "sidrena_cijena");
+        Map<String, String> v = new LinkedHashMap<>();
+        v.put("maloprodajna_cijena", "12.00");
+        v.put("bazna_cijena", "");
+        v.put("sidrena_cijena", "");
+        RowRules.complete(v, Set.of("bazna_cijena", "sidrena_cijena"), cols, null, "2026-11-17");
+        assertEquals("12.00", v.get("bazna_cijena"));
+        assertEquals("12.00", v.get("sidrena_cijena"));
+        v.put("bazna_cijena", "10.00");
+        v.put("sidrena_cijena", "");
+        RowRules.complete(v, Set.of("bazna_cijena", "sidrena_cijena"), cols, null, "2026-11-17");
+        assertEquals("10.00", v.get("sidrena_cijena"), "prazna sidrena = bazna");
+    }
+
+    @Test
+    void nulaIzSqlaZaNajnizuISidrenuSeTretiraKaoPrazno() {
+        List<String> cols = List.of("sifra", "maloprodajna_cijena", "bazna_cijena", "sidrena_cijena", "najniza_cijena_30_dana");
+        Map<String, String> v = new LinkedHashMap<>();
+        v.put("sifra", "X1");
+        v.put("maloprodajna_cijena", "140.36");
+        v.put("bazna_cijena", "0.00");
+        v.put("sidrena_cijena", "0.00");
+        v.put("najniza_cijena_30_dana", "0.00");
+        RowRules.complete(v, Set.of("sifra", "bazna_cijena", "sidrena_cijena", "najniza_cijena_30_dana"), cols, new PriceHistory(), "2026-11-17", true);
+        assertEquals("140.36", v.get("najniza_cijena_30_dana"), "najniza 0.00 nije valjana");
+        assertEquals("140.36", v.get("sidrena_cijena"));
+        assertEquals("140.36", v.get("bazna_cijena"));
+    }
+
+    @Test
+    void praznaNajnizaIzSqlaDopunjujeSeIzPovijesti() throws Exception {
+        PriceHistory h = new PriceHistory();
+        Map<String, String> v = row("100.00", "100.00");
+        v.put("najniza_cijena_30_dana", "");
+        RowRules.complete(v, Set.of("sifra", "maloprodajna_cijena", "sidrena_cijena", "najniza_cijena_30_dana"), COLS, h, "2026-11-17", true);
+        assertEquals("100.00", v.get("najniza_cijena_30_dana"));
+        // SQL vraca vrijednost: ostaje, a povijest se i dalje biljezi
+        Map<String, String> w = row("100.00", "100.00", "B2", "RE", "");
+        w.put("najniza_cijena_30_dana", "90.00");
+        RowRules.complete(w, Set.of("sifra", "maloprodajna_cijena", "sidrena_cijena", "najniza_cijena_30_dana"), COLS, h, "2026-11-17", true);
+        assertEquals("90.00", w.get("najniza_cijena_30_dana"));
+        assertTrue(h.isDirty());
     }
 
     @Test

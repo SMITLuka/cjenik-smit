@@ -1,5 +1,6 @@
 package hr.smit.cjenik.extractor;
 
+import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -92,8 +93,14 @@ public final class CsvBuilder {
         for (int i = 1; i <= md.getColumnCount(); i++) {
             idx.put(md.getColumnLabel(i).toLowerCase(), i);
         }
-        // najnizu cijenu u 30 dana racuna servis iz povijesti samo ako je SQL ne vraca
-        PriceHistory rowHist = idx.containsKey("najniza_cijena_30_dana") ? null : hist;
+        // drugi nazivi stupaca (npr. KAT_BROJ -> sifra); izvorni naziv ima prednost ako postoje oba
+        for (Map.Entry<String, String> al : Feeds.ALIASES.entrySet()) {
+            if (idx.containsKey(al.getKey()) && !idx.containsKey(al.getValue())) {
+                idx.put(al.getValue(), idx.get(al.getKey()));
+            }
+        }
+        // najnizu cijenu u 30 dana racuna servis iz povijesti kad je SQL ne vraca ili je vrati praznu
+        boolean sqlNajniza = idx.containsKey("najniza_cijena_30_dana");
         for (Map.Entry<String, String> f : Feeds.FALLBACK.entrySet()) {
             if (!idx.containsKey(f.getKey()) && idx.containsKey(f.getValue())) {
                 idx.put(f.getKey(), idx.get(f.getValue()));
@@ -106,6 +113,7 @@ public final class CsvBuilder {
         }
         Set<String> sqlCols = new HashSet<>(idx.keySet());
         int n = 0;
+        int skipped = 0;
         while (rs.next()) {
             Map<String, String> vals = new LinkedHashMap<>();
             for (String c : cols) {
@@ -121,7 +129,12 @@ public final class CsvBuilder {
                     vals.put(nc, vals.get("sifra"));
                 }
             }
-            RowRules.complete(vals, sqlCols, cols, rowHist, today);
+            RowRules.complete(vals, sqlCols, cols, hist, today, sqlNajniza);
+            BigDecimal price = RowRules.money(vals.get("maloprodajna_cijena"));
+            if (price == null || price.signum() <= 0) {
+                skipped++; // bez valjane cijene nema smisla objavljivati
+                continue;
+            }
             boolean first = true;
             for (String c : cols) {
                 if (!first) {
@@ -132,6 +145,9 @@ public final class CsvBuilder {
             }
             sb.append('\n');
             n++;
+        }
+        if (skipped > 0) {
+            Log.warn("  " + fileName + ": preskoceno " + skipped + " redaka bez valjane maloprodajne cijene");
         }
         return n;
     }
