@@ -13,7 +13,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Izvrsava SQL datoteke cjenika nad bazom (samo SELECT) i gradi CSV prema specifikaciji portala. */
+/**
+ * Izvrsava SQL datoteke nad bazom (samo SELECT) i gradi jedan CSV cjenika prema specifikaciji portala.
+ * Cjenik 'proizvodi' nastaje spajanjem izvora 'dijelovi' i 'vozila' (isti stupci) u jednu datoteku; 'radovi' je
+ * zaseban cjenik s jednim izvorom.
+ */
 public final class CsvBuilder {
     private final Path sqlDir;
 
@@ -24,47 +28,59 @@ public final class CsvBuilder {
     /**
      * Stupci se mapiraju PO IMENU (alias u SELECT-u). Obavezni stupci moraju postojati; neobavezne i izvedene
      * (vidi Feeds) servis dopunjuje. Parametri '?' (ako ih ima u upitu): 1) GRP velikim slovima, 2) BETNR.
+     * Za svaki izvor SQL datoteke su u SQL_DIR/&lt;izvor&gt;/*.sql (ili SQL_DIR/&lt;izvor&gt;.sql). Izvor bez redaka je u redu
+     * ako neki drugi izvor ima redaka; ako nema nijedan redak, to je greska.
      *
-     * @param hist povijest cijena ove lokacije i cjenika (azurira se i sprema ovdje)
+     * @param sources    izvori koji se spajaju u cjenik (npr. dijelovi i vozila)
+     * @param historyDir mapa povijesti cijena; datoteka po lokaciji i izvoru (grp_betnr_izvor.tsv)
      */
-    public String build(Connection conn, String grp, int betnr, String feed, PriceHistory hist, Path historyFile,
+    public String build(Connection conn, String grp, int betnr, String feed, List<String> sources, Path historyDir,
                         String today) throws Exception {
         List<String> cols = Feeds.columns(feed);
         StringBuilder sb = new StringBuilder(String.join(";", cols)).append('\n');
         int total = 0;
-        for (Path file : SqlFiles.files(sqlDir, feed)) {
-            String sql = SqlFiles.expand(SqlFiles.read(file), grp, betnr);
-            int qm = (int) sql.chars().filter(c -> c == '?').count();
-            int fileRows;
-            if (qm == 0) {
-                try (Statement st = conn.createStatement()) {
-                    st.setQueryTimeout(1800);
-                    st.setFetchSize(1000);
-                    try (ResultSet rs = st.executeQuery(sql)) {
-                        fileRows = consume(rs, cols, hist, today, sb, file.getFileName().toString());
+        for (String source : sources) {
+            Path historyFile = historyDir.resolve(grp + "_" + betnr + "_" + source + ".tsv");
+            PriceHistory hist = PriceHistory.load(historyFile);
+            int sourceRows = 0;
+            for (Path file : SqlFiles.files(sqlDir, source)) {
+                String sql = SqlFiles.expand(SqlFiles.read(file), grp, betnr);
+                int qm = (int) sql.chars().filter(c -> c == '?').count();
+                int fileRows;
+                if (qm == 0) {
+                    try (Statement st = conn.createStatement()) {
+                        st.setQueryTimeout(1800);
+                        st.setFetchSize(1000);
+                        try (ResultSet rs = st.executeQuery(sql)) {
+                            fileRows = consume(rs, cols, hist, today, sb, file.getFileName().toString());
+                        }
+                    }
+                } else {
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setQueryTimeout(1800);
+                        ps.setFetchSize(1000);
+                        ps.setString(1, grp.toUpperCase());
+                        if (qm >= 2) {
+                            ps.setInt(2, betnr);
+                        }
+                        try (ResultSet rs = ps.executeQuery()) {
+                            fileRows = consume(rs, cols, hist, today, sb, file.getFileName().toString());
+                        }
                     }
                 }
-            } else {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setQueryTimeout(1800);
-                    ps.setFetchSize(1000);
-                    ps.setString(1, grp.toUpperCase());
-                    if (qm >= 2) {
-                        ps.setInt(2, betnr);
-                    }
-                    try (ResultSet rs = ps.executeQuery()) {
-                        fileRows = consume(rs, cols, hist, today, sb, file.getFileName().toString());
-                    }
-                }
+                sourceRows += fileRows;
+                Log.info("  " + grp + "/" + betnr + "/" + feed + ": " + source + "/" + file.getFileName() + " -> " + fileRows + " redaka");
             }
-            total += fileRows;
-            Log.info("  " + grp + "/" + betnr + "/" + feed + ": " + file.getFileName() + " -> " + fileRows + " redaka");
+            if (hist.isDirty()) {
+                hist.save(historyFile, today);
+            }
+            if (sourceRows == 0 && sources.size() > 1) {
+                Log.warn("  " + grp + "/" + betnr + "/" + feed + ": izvor " + source + " nema redaka");
+            }
+            total += sourceRows;
         }
         if (total == 0) {
             throw new IllegalStateException("SQL za " + grp + "/" + betnr + "/" + feed + " nije vratio nijedan redak.");
-        }
-        if (hist.isDirty()) {
-            hist.save(historyFile, today);
         }
         return sb.toString();
     }

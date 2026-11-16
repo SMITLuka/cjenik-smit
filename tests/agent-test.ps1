@@ -16,7 +16,7 @@ foreach ($f in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Lan
 . (Join-Path $agent 'Rules.ps1')
 $TextCols = @('naziv', 'naziv_usluge', 'sifra', 'marka', 'jedinica_mjere', 'naziv_posebnog_oblika_prodaje')
 $ProizvodCols = @('naziv', 'sifra', 'marka', 'neto_kolicina', 'jedinica_mjere', 'cijena_po_jedinici_mjere', 'maloprodajna_cijena', 'posebni_oblik_prodaje', 'naziv_posebnog_oblika_prodaje', 'bazna_cijena', 'sidrena_cijena', 'barkod', 'dostupnost', 'najniza_cijena_30_dana')
-$Header = @{ dijelovi = $ProizvodCols }
+$Header = @{ proizvodi = $ProizvodCols }
 $Fallback = @{ bazna_cijena = 'sidrena_cijena'; sidrena_cijena = 'bazna_cijena'; najniza_cijena_30_dana = 'maloprodajna_cijena' }
 $OptionalCols = @('marka', 'neto_kolicina', 'jedinica_mjere', 'naziv_posebnog_oblika_prodaje', 'barkod')
 $DerivedCols = @('cijena_po_jedinici_mjere', 'posebni_oblik_prodaje', 'najniza_cijena_30_dana')
@@ -43,7 +43,7 @@ $conn | Add-Member ScriptMethod CreateCommand {
     $cmd
 }.GetNewClosure()
 
-$csv = New-CsvFromSql 'kb5' 1 'dijelovi' $conn
+$csv = New-CsvFromSql 'kb5' 1 'proizvodi' @('dijelovi') $conn
 if ($Out) { [IO.File]::WriteAllText($Out, $csv, $Utf8NoBom) }
 $lines = $csv -split "`n" | Where-Object { $_ -ne '' }
 $rows = @($lines | Select-Object -Skip 1 | ForEach-Object { , ($_ -split ';') })
@@ -71,7 +71,7 @@ T 'povijest je spremljena' (Test-Path (Join-Path $tmp 'state\history\kb5_1_dijel
 
 # drugi dan: cijena F1 se vraca na 100 -> najniza ostaje 80
 $dt.Rows[0]['maloprodajna_cijena'] = [decimal]100
-$csv2 = New-CsvFromSql 'kb5' 1 'dijelovi' $conn
+$csv2 = New-CsvFromSql 'kb5' 1 'proizvodi' @('dijelovi') $conn
 $rows2 = @(($csv2 -split "`n" | Where-Object { $_ -ne '' } | Select-Object -Skip 1) | ForEach-Object { , ($_ -split ';') })
 T 'ponovno pokretanje: najniza ostaje 80 nakon povratka cijene' ((Col $rows2[0] 'najniza_cijena_30_dana') -eq '80.00')
 

@@ -12,7 +12,8 @@
   .\Send-Prices.ps1 -SetDbPassword      # jednokratno: upisi lozinku baze (DPAPI)
   .\Send-Prices.ps1 -DryRun             # samo generira CSV u out\ (ne salje)
   .\Send-Prices.ps1 -Only ka4/1         # samo jedna lokacija
-  .\Send-Prices.ps1 -Feed dijelovi      # samo jedan cjenik (dijelovi | vozila | radovi), sve lokacije
+  .\Send-Prices.ps1 -Feed proizvodi     # samo jedan cjenik (proizvodi = vozila i dijelovi zajedno | radovi), sve lokacije
+  .\Send-Prices.ps1 -Only ka4/1 -Sources dijelovi   # samo odabrani izvori (dijelovi, vozila, radovi); inace popis daje portal
   .\Send-Prices.ps1 -FromDir C:\csv     # testni nacin: umjesto SQL-a cita C:\csv\<grp>_<betnr>_<feed>.csv
 #>
 [CmdletBinding()]
@@ -22,7 +23,8 @@ param(
     [switch]$SetDbPassword,
     [switch]$DryRun,
     [string]$Only,
-    [ValidateSet('', 'dijelovi', 'vozila', 'radovi')][string]$Feed = '',
+    [ValidateSet('', 'proizvodi', 'radovi')][string]$Feed = '',
+    [string]$Sources = '',
     [string]$FromDir
 )
 
@@ -168,8 +170,10 @@ $UslugaCols = @('naziv_usluge', 'maloprodajna_cijena', 'posebni_oblik_prodaje', 
 # Ako SQL ne vraca kolonu, uzima se druga (bazna i sidrena su na dan 10.9.2026. ista; najnizu cijenu
 # bez povijesti zamjenjuje maloprodajna).
 $Fallback = @{ bazna_cijena = 'sidrena_cijena'; sidrena_cijena = 'bazna_cijena'; najniza_cijena_30_dana = 'maloprodajna_cijena' }
-# Tri odvojena cjenika po lokaciji: dijelovi i vozila (isti stupci) te radovi.
-$Header = @{ dijelovi = $ProizvodCols; vozila = $ProizvodCols; radovi = $UslugaCols }
+# Dva cjenika po lokaciji: proizvodi (vozila i dijelovi u istoj datoteci, isti stupci) i radovi.
+$Header = @{ proizvodi = $ProizvodCols; radovi = $UslugaCols }
+# Izvori (mape sql\<izvor>\*.sql) od kojih se gradi pojedini cjenik.
+$SourcesOf = @{ proizvodi = @('dijelovi', 'vozila'); radovi = @('radovi') }
 # Neobavezne kolone: ako ih SQL ne vraca, u CSV idu prazne (nije greska).
 $OptionalCols = @('marka', 'neto_kolicina', 'jedinica_mjere', 'naziv_posebnog_oblika_prodaje', 'barkod')
 # Kolone koje agent sam izvodi ako ih SQL ne vraca (vidi Rules.ps1): cijena za jedinicu mjere, poseban oblik prodaje,
@@ -232,59 +236,64 @@ function Expand-Sql([string]$Sql, [string]$Grp, [int]$Betnr) {
     return $Sql.Replace('{GRP}', $Grp.ToLower()).Replace('{BETNR}', [string]$Betnr)
 }
 
-# Vraca CSV tekst (UTF-8) za lokaciju+feed izvrsavanjem SQL-a (svih datoteka feeda).
-# Parametri '?' (ako ih ima u upitu): 1) GRP velikim slovima, 2) BETNR.
-function New-CsvFromSql([string]$Grp, [int]$Betnr, [string]$Feed, $Conn) {
+# Vraca CSV tekst (UTF-8) za lokaciju i cjenik izvrsavanjem SQL-a svih ukljucenih izvora (cjenik proizvodi = izvori
+# dijelovi i vozila spojeni u jednu datoteku). Parametri '?' (ako ih ima u upitu): 1) GRP velikim slovima, 2) BETNR.
+function New-CsvFromSql([string]$Grp, [int]$Betnr, [string]$Feed, [string[]]$Srcs, $Conn) {
     $cols = $Header[$Feed]
     $sb = New-Object Text.StringBuilder
     [void]$sb.Append(($cols -join ';')).Append("`n")
     $n = 0
     $today = Get-Date -Format 'yyyy-MM-dd'
-    $histPath = Join-Path $base ('state\history\{0}_{1}_{2}.tsv' -f $Grp.ToLower(), $Betnr, $Feed)
-    $hist = Read-PriceHistory $histPath
-    $histChanged = $false
-    foreach ($file in (Get-SqlFiles $Feed)) {
-        $sql = Expand-Sql (Read-SqlText $file.FullName) $Grp $Betnr
-        $cmd = $Conn.CreateCommand()
-        $cmd.CommandText = $sql
-        $cmd.CommandTimeout = 1800
-        $qm = ([regex]::Matches($sql, '\?')).Count
-        if ($qm -ge 1) { [void]$cmd.Parameters.AddWithValue('@grp', $Grp.ToUpper()) }
-        if ($qm -ge 2) { [void]$cmd.Parameters.AddWithValue('@betnr', $Betnr) }
-        $rd = $cmd.ExecuteReader()
-        try {
-            $idx = @{}
-            for ($i = 0; $i -lt $rd.FieldCount; $i++) { $idx[$rd.GetName($i).ToLower()] = $i }
-            # najnizu cijenu u 30 dana racuna agent iz svoje povijesti samo ako je SQL ne vraca
-            $rowHist = if ($idx.ContainsKey('najniza_cijena_30_dana')) { $null } else { $hist }
-            foreach ($k in @($Fallback.Keys)) {
-                if (-not $idx.ContainsKey($k) -and $idx.ContainsKey($Fallback[$k])) { $idx[$k] = $idx[$Fallback[$k]] }
-            }
-            foreach ($c in $cols) {
-                if (-not $idx.ContainsKey($c) -and $OptionalCols -notcontains $c -and $DerivedCols -notcontains $c) { throw "$($file.Name): SQL ne vraca kolonu '$c' (alias u SELECT-u)." }
-            }
-            $fileRows = 0
-            while ($rd.Read()) {
-                $vals = @{}
+    foreach ($src in $Srcs) {
+        # povijest cijena je zasebna po izvoru (grp_betnr_izvor.tsv)
+        $histPath = Join-Path $base ('state\history\{0}_{1}_{2}.tsv' -f $Grp.ToLower(), $Betnr, $src)
+        $hist = Read-PriceHistory $histPath
+        $histChanged = $false
+        $srcRows = 0
+        foreach ($file in (Get-SqlFiles $src)) {
+            $sql = Expand-Sql (Read-SqlText $file.FullName) $Grp $Betnr
+            $cmd = $Conn.CreateCommand()
+            $cmd.CommandText = $sql
+            $cmd.CommandTimeout = 1800
+            $qm = ([regex]::Matches($sql, '\?')).Count
+            if ($qm -ge 1) { [void]$cmd.Parameters.AddWithValue('@grp', $Grp.ToUpper()) }
+            if ($qm -ge 2) { [void]$cmd.Parameters.AddWithValue('@betnr', $Betnr) }
+            $rd = $cmd.ExecuteReader()
+            try {
+                $idx = @{}
+                for ($i = 0; $i -lt $rd.FieldCount; $i++) { $idx[$rd.GetName($i).ToLower()] = $i }
+                # najnizu cijenu u 30 dana racuna agent iz svoje povijesti samo ako je SQL ne vraca
+                $rowHist = if ($idx.ContainsKey('najniza_cijena_30_dana')) { $null } else { $hist }
+                foreach ($k in @($Fallback.Keys)) {
+                    if (-not $idx.ContainsKey($k) -and $idx.ContainsKey($Fallback[$k])) { $idx[$k] = $idx[$Fallback[$k]] }
+                }
                 foreach ($c in $cols) {
-                    $s = if ($idx.ContainsKey($c)) { Format-Cell $rd.GetValue($idx[$c]) } else { '' }
-                    if ($TextCols -contains $c) { $s = Clean-Text $s }
-                    $vals[$c] = $s
+                    if (-not $idx.ContainsKey($c) -and $OptionalCols -notcontains $c -and $DerivedCols -notcontains $c) { throw "$($file.Name): SQL ne vraca kolonu '$c' (alias u SELECT-u)." }
                 }
-                # prazan naziv (u bazi ima artikala bez naziva) -> zamjenjuje se sifrom
-                foreach ($nc in @('naziv', 'naziv_usluge')) {
-                    if ($vals.ContainsKey($nc) -and $vals[$nc] -eq '' -and $vals.ContainsKey('sifra')) { $vals[$nc] = $vals['sifra'] }
+                $fileRows = 0
+                while ($rd.Read()) {
+                    $vals = @{}
+                    foreach ($c in $cols) {
+                        $s = if ($idx.ContainsKey($c)) { Format-Cell $rd.GetValue($idx[$c]) } else { '' }
+                        if ($TextCols -contains $c) { $s = Clean-Text $s }
+                        $vals[$c] = $s
+                    }
+                    # prazan naziv (u bazi ima artikala bez naziva) -> zamjenjuje se sifrom
+                    foreach ($nc in @('naziv', 'naziv_usluge')) {
+                        if ($vals.ContainsKey($nc) -and $vals[$nc] -eq '' -and $vals.ContainsKey('sifra')) { $vals[$nc] = $vals['sifra'] }
+                    }
+                    if (Complete-Row $vals $idx $cols $rowHist $today) { $histChanged = $true }
+                    $cells = foreach ($c in $cols) { ConvertTo-CsvField $vals[$c] }
+                    [void]$sb.Append(($cells -join ';')).Append("`n")
+                    $n++; $srcRows++; $fileRows++
                 }
-                if (Complete-Row $vals $idx $cols $rowHist $today) { $histChanged = $true }
-                $cells = foreach ($c in $cols) { ConvertTo-CsvField $vals[$c] }
-                [void]$sb.Append(($cells -join ';')).Append("`n")
-                $n++; $fileRows++
-            }
-        } finally { $rd.Close() }
-        Write-Log 'INFO' "  ${Grp}/${Betnr}/${Feed}: $($file.Name) -> $fileRows redaka"
+            } finally { $rd.Close() }
+            Write-Log 'INFO' "  ${Grp}/${Betnr}/${Feed}: ${src}/$($file.Name) -> $fileRows redaka"
+        }
+        if ($histChanged) { Save-PriceHistory $hist $histPath $today }
+        if ($srcRows -eq 0 -and $Srcs.Count -gt 1) { Write-Log 'WARN' "  ${Grp}/${Betnr}/${Feed}: izvor $src nema redaka" }
     }
     if ($n -eq 0) { throw "SQL za $Grp/$Betnr/$Feed nije vratio nijedan redak." }
-    if ($histChanged) { Save-PriceHistory $hist $histPath $today }
     return $sb.ToString()
 }
 
@@ -309,15 +318,25 @@ Write-Log 'INFO' "Start (DryRun=$([bool]$DryRun) FromDir=$FromDir Only=$Only)"
 $targets = @()
 if ($Only) {
     $g, $b = $Only.Split('/')
-    foreach ($f in @('dijelovi', 'vozila', 'radovi')) { $targets += [pscustomobject]@{ grp = $g.ToLower(); betnr = [int]$b; feed = $f } }
+    foreach ($f in @('proizvodi', 'radovi')) { $targets += [pscustomobject]@{ grp = $g.ToLower(); betnr = [int]$b; feed = $f; sources = @($SourcesOf[$f]) } }
 } else {
     $r = Invoke-Signed $cfg 'GET' '/api/v1/locations'
     if ($r.Status -ne 200) { Write-Log 'ERROR' "Ne mogu dohvatiti lokacije: HTTP $($r.Status) $($r.Body)"; exit 1 }
     foreach ($l in ($r.Body | ConvertFrom-Json).locations) {
-        foreach ($f in $l.feeds) { $targets += [pscustomobject]@{ grp = $l.grp; betnr = [int]$l.betnr; feed = $f } }
+        foreach ($f in $l.feeds) {
+            # izvori koje je portal ukljucio za lokaciju (stariji portal bez popisa: svi izvori cjenika)
+            $src = @($SourcesOf[$f])
+            if ($l.sources -and @($l.sources).Count -gt 0) { $src = @($src | Where-Object { @($l.sources) -contains $_ }) }
+            $targets += [pscustomobject]@{ grp = $l.grp; betnr = [int]$l.betnr; feed = $f; sources = $src }
+        }
     }
 }
 if ($Feed) { $targets = @($targets | Where-Object { $_.feed -eq $Feed }) }
+if ($Sources) {
+    $want = @($Sources.ToLower().Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    foreach ($t in $targets) { $t.sources = @($t.sources | Where-Object { $want -contains $_ }) }
+}
+$targets = @($targets | Where-Object { @($_.sources).Count -gt 0 })
 Write-Log 'INFO' "Za obradu: $($targets.Count) feedova"
 
 $conn = $null
@@ -336,7 +355,7 @@ try {
                 if (-not (Test-Path $file)) { Write-Log 'WARN' "${label}:nema $file, preskacem"; continue }
                 $csv = [IO.File]::ReadAllText($file, $Utf8NoBom)
             } else {
-                $csv = New-CsvFromSql $t.grp $t.betnr $t.feed $conn
+                $csv = New-CsvFromSql $t.grp $t.betnr $t.feed @($t.sources) $conn
             }
             if ($DryRun) {
                 $dir = Join-Path $outDir (Get-Date -Format 'yyyy-MM-dd'); New-Item -ItemType Directory -Force -Path $dir | Out-Null

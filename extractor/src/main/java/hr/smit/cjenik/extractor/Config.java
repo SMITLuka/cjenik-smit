@@ -3,6 +3,8 @@ package hr.smit.cjenik.extractor;
 import java.nio.file.Path;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 /** Konfiguracija iskljucivo iz varijabli okruzenja (u slici i repou nema tajni). */
@@ -24,6 +26,7 @@ public final class Config {
     public final int retries;
     public final String only;
     public final String feed;
+    public final List<String> sources;
     public final boolean dryRun;
     public final boolean runOnce;
     public final boolean runOnStart;
@@ -57,7 +60,16 @@ public final class Config {
         this.only = opt(e, "ONLY", "").toLowerCase();
         this.feed = opt(e, "FEED", "");
         if (!feed.isEmpty() && !Feeds.isFeed(feed)) {
-            throw new IllegalArgumentException("FEED mora biti dijelovi, vozila ili radovi.");
+            throw new IllegalArgumentException("FEED mora biti proizvodi ili radovi.");
+        }
+        // neobavezno: ogranici izvore (npr. SOURCES=dijelovi) kad portal ne daje popis (ONLY/FROM_DIR proba)
+        String src = opt(e, "SOURCES", "");
+        this.sources = src.isEmpty() ? List.of()
+            : Arrays.stream(src.toLowerCase().split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+        for (String s : sources) {
+            if (!Feeds.isSource(s)) {
+                throw new IllegalArgumentException("SOURCES: nepoznat izvor '" + s + "' (dijelovi, vozila, radovi).");
+            }
         }
     }
 

@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -12,18 +13,30 @@ import java.util.List;
 
 /** Jedan prolaz: za svaku lokaciju i cjenik izvuce podatke, napravi CSV i posalje ga portalu (ili spremi uz DRY_RUN). */
 public final class Extractor {
-    private record Target(String grp, int betnr, String feed) {
+    private record Target(String grp, int betnr, String feed, List<String> sources) {
         String label() {
             return grp + "/" + betnr + "/" + feed;
         }
     }
 
+    /** Otvara vezu prema bazi (u testovima zamjenjiva). */
+    @FunctionalInterface
+    interface ConnectionFactory {
+        Connection open() throws SQLException;
+    }
+
     private final Config cfg;
     private final PortalClient portal;
     private final CsvBuilder builder;
+    private final ConnectionFactory connect;
 
     public Extractor(Config cfg) {
+        this(cfg, () -> As400.connect(cfg));
+    }
+
+    Extractor(Config cfg, ConnectionFactory connect) {
         this.cfg = cfg;
+        this.connect = connect;
         this.portal = cfg.portalUrl.isEmpty() ? null : new PortalClient(cfg.portalUrl, cfg.keyId, cfg.secret);
         this.builder = new CsvBuilder(cfg.sqlDir);
     }
@@ -51,11 +64,9 @@ public final class Extractor {
                         csv = Files.readString(f, StandardCharsets.UTF_8);
                     } else {
                         if (conn == null || conn.isClosed()) {
-                            conn = As400.connect(cfg);
+                            conn = connect.open();
                         }
-                        String today = today();
-                        Path hf = cfg.stateDir.resolve("history").resolve(t.grp + "_" + t.betnr + "_" + t.feed + ".tsv");
-                        csv = builder.build(conn, t.grp, t.betnr, t.feed, PriceHistory.load(hf), hf, today);
+                        csv = builder.build(conn, t.grp, t.betnr, t.feed, t.sources, cfg.stateDir.resolve("history"), today());
                     }
                     if (cfg.dryRun) {
                         Path dir = cfg.outDir.resolve(today());
@@ -106,29 +117,40 @@ public final class Extractor {
 
     private List<Target> targets() throws IOException {
         List<Target> out = new ArrayList<>();
-        if (!cfg.only.isEmpty()) {
+        if (cfg.only.contains("/")) {
             String[] p = cfg.only.split("/");
-            if (p.length == 2) {
-                for (String f : List.of("dijelovi", "vozila", "radovi")) {
-                    out.add(new Target(p[0], Integer.parseInt(p[1]), f));
-                }
-            } else {
-                // samo koncesija (npr. ONLY=ka4): lokacije s portala
-                for (PortalClient.Location l : requirePortal().locations()) {
-                    if (l.grp().equalsIgnoreCase(cfg.only)) {
-                        l.feeds().forEach(f -> out.add(new Target(l.grp(), l.betnr(), f)));
-                    }
-                }
+            for (String feed : List.of("proizvodi", "radovi")) {
+                add(out, p[0], Integer.parseInt(p[1]), feed, Feeds.sourcesOf(feed));
             }
         } else {
+            // sve lokacije (ili samo koncesija ONLY=ka4) s portala; portal javlja cjenike i ukljucene izvore
             for (PortalClient.Location l : requirePortal().locations()) {
-                l.feeds().forEach(f -> out.add(new Target(l.grp(), l.betnr(), f)));
+                if (!cfg.only.isEmpty() && !l.grp().equalsIgnoreCase(cfg.only)) {
+                    continue;
+                }
+                for (String feed : l.feeds()) {
+                    List<String> src = Feeds.sourcesOf(feed);
+                    // stariji portal bez popisa izvora: svi izvori cjenika
+                    if (!l.sources().isEmpty()) {
+                        src = src.stream().filter(s -> l.sources().contains(s)).toList();
+                    }
+                    add(out, l.grp(), l.betnr(), feed, src);
+                }
             }
         }
         if (!cfg.feed.isEmpty()) {
             out.removeIf(t -> !t.feed.equals(cfg.feed));
         }
         return out;
+    }
+
+    private void add(List<Target> out, String grp, int betnr, String feed, List<String> sources) {
+        List<String> src = cfg.sources.isEmpty() ? sources : sources.stream().filter(cfg.sources::contains).toList();
+        if (src.isEmpty()) {
+            Log.warn(grp + "/" + betnr + "/" + feed + ": nema izvora za obradu, preskacem");
+            return;
+        }
+        out.add(new Target(grp, betnr, feed, src));
     }
 
     private PortalClient requirePortal() {

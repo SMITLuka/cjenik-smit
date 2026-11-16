@@ -86,9 +86,9 @@ final class Pages
     /**
      * Naziv datoteke prema nacrtu Pravilnika o nacinu objave cjenika (cl. 6(2)): oblik, adresa i oznaka prodajnog
      * mjesta, broj pohrane te vremenska oznaka (datum i vrijeme slanja). Dodani su naziv objekta i vrsta cjenika
-     * (dijelovi/vozila/radovi) radi citljivosti i razlikovanja. Broj pohrane = redni broj objave (PRETPOSTAVKA dok
+     * (proizvodi/radovi) radi citljivosti i razlikovanja. Broj pohrane = redni broj objave (PRETPOSTAVKA dok
      * se pojam ne pojasni). Oblik = polje "oblik prodajnog mjesta" lokacije (neobavezno).
-     * Primjer: rb-auto-zagreb_salon_ulica-1-zagreb_kb521_dijelovi_000007_20261117070000.csv
+     * Primjer: rb-auto-zagreb_salon_ulica-1-zagreb_kb521_proizvodi_000007_20261117070000.csv
      */
     public static function downloadName(array $loc, string $feed, int $seq, string $createdUtc): string
     {

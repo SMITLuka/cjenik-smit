@@ -5,7 +5,7 @@
   <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
   <input type="hidden" name="kind" value="locations">
   <h2>Lokacije</h2>
-  <p class="muted">Obavezno: <code>grp;betnr;naziv</code>. Neobavezno: <code>pravni_naziv;adresa;oblik_mjesta;oznaka_objekta;dijelovi;vozila;radovi</code> (zadnja tri: da/ne). Postojeće lokacije se ažuriraju upisanim stupcima.</p>
+  <p class="muted">Obavezno: <code>grp;betnr;naziv</code>. Neobavezno: <code>pravni_naziv;adresa;oblik_mjesta;oznaka_objekta;dijelovi;vozila;radovi</code> (zadnja tri su izvori cjenika, da/ne: vozila i dijelovi objavljuju se zajedno u cjeniku „Vozila i proizvodi”, radovi su zaseban cjenik). Postojeće lokacije se ažuriraju upisanim stupcima.</p>
   <label for="file1">CSV datoteka</label>
   <input id="file1" name="file" type="file" accept=".csv,text/csv" required>
   <button type="submit">Uvezi lokacije</button>

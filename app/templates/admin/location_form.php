@@ -23,9 +23,10 @@
   <label for="oblik_mjesta">Oblik prodajnog mjesta (neobavezno, npr. salon, servis; ulazi u naziv datoteke)</label>
   <input id="oblik_mjesta" name="oblik_mjesta" type="text" maxlength="50" value="<?= $e($loc['oblik_mjesta'] ?? '') ?>">
   <p class="muted">Broj pohrane u nazivu datoteke dodjeljuje sustav automatski (redni broj objave za tu lokaciju i cjenik).</p>
+  <p class="muted">Vozila i rezervni dijelovi objavljuju se zajedno u jednom cjeniku „Vozila i proizvodi”. Isključi izvor koji ova lokacija nema (ako nema nijednog, cjenika proizvoda nema); radovi su zaseban cjenik.</p>
   <p class="check">
-    <?php foreach (\Cjenik\CsvSpec::FEEDS as $feedName => $feedDef): ?>
-      <input id="f_<?= $e($feedName) ?>" name="feed_<?= $e($feedName) ?>" type="checkbox" value="1" <?= $isNew || (int)$loc['feed_' . $feedName] ? 'checked' : '' ?>><label for="f_<?= $e($feedName) ?>">Cjenik: <?= $e($feedDef['label']) ?></label><br>
+    <?php foreach (\Cjenik\Locations::SOURCES as $source => $label): ?>
+      <input id="f_<?= $e($source) ?>" name="feed_<?= $e($source) ?>" type="checkbox" value="1" <?= $isNew || (int)$loc['feed_' . $source] ? 'checked' : '' ?>><label for="f_<?= $e($source) ?>"><?= $source === 'radovi' ? 'Cjenik' : 'Izvor' ?>: <?= $e($label) ?></label><br>
     <?php endforeach; ?>
     <?php if (!$isNew): ?><input id="ac" name="active" type="checkbox" value="1" <?= (int)$loc['active'] ? 'checked' : '' ?>><label for="ac">Aktivna (neaktivna se ne objavljuje i ne prima upload)</label><?php endif; ?>
   </p>

@@ -4,7 +4,7 @@
 <?php
 $types = ['text' => 'tekst', 'money' => 'iznos (decimalna točka)', 'decimal' => 'broj (decimalna točka)', 'yesno' => 'da / ne', 'avail' => 'dostupno / nedostupno', 'barcode' => 'barkod (8–14 znamenki)'];
 $groups = [
-    'proizvod' => ['Proizvodi', 'Rezervni dijelovi i vozila (isti stupci).'],
+    'proizvod' => ['Vozila i proizvodi', 'Vozila i rezervni dijelovi u istoj datoteci (ista struktura).'],
     'usluga' => ['Usluge', 'Radovi.'],
 ];
 foreach ($groups as $kind => [$title, $desc]):
@@ -38,7 +38,7 @@ foreach ($groups as $kind => [$title, $desc]):
     <li><code>bazna_cijena</code> i <code>sidrena_cijena</code> su cijene na dan 10.9.2026., <code>maloprodajna_cijena</code> je cijena koja trenutno vrijedi (s popustom), a <code>najniza_cijena_30_dana</code> je najniža cijena u zadnjih 30 dana.</li>
     <li>Sve cijene su s PDV-om i PPMV-om. Objavljuju se samo artikli na zalihi.</li>
     <li>Ako je <code>posebni_oblik_prodaje</code> = <code>da</code>, upisuje se i naziv posebnog oblika prodaje.</li>
-    <li>Stalni URL najnovijeg cjenika: <code>/&lt;koncesija&gt;/&lt;broj lokacije&gt;/&lt;dijelovi|vozila|radovi&gt;/latest.csv</code></li>
+    <li>Stalni URL najnovijeg cjenika: <code>/&lt;koncesija&gt;/&lt;broj lokacije&gt;/&lt;proizvodi|radovi&gt;/latest.csv</code></li>
     <li>Arhiva zadnjih 30 dana: <code>…/GGGG-MM-DD.csv</code></li>
   </ul>
 </section>

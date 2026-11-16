@@ -7,20 +7,28 @@ use Cjenik\Locations;
 use Cjenik\Pages;
 use Cjenik\Support;
 
-// Grupno ukljucuje/iskljucuje cjenik (dijelovi|vozila|radovi) za lokacije.
-//   php app/bin/set-feeds.php <cjenik> <on|off> <lokacija>... [--dry-run]
+// Grupno ukljucuje/iskljucuje izvor cjenika (dijelovi|vozila|radovi) za lokacije. Vozila i dijelovi objavljuju se
+// zajedno u cjeniku 'proizvodi'; 'proizvodi' kao argument znaci oba izvora (dijelovi i vozila).
+//   php app/bin/set-feeds.php <izvor> <on|off> <lokacija>... [--dry-run]
 // <lokacija> je grp/broj (npr. ka4/101), samo grp (sve lokacije koncesije), 'all' ili @datoteka
 // (jedna lokacija po retku; prazni retci i retci s # se preskacu), npr. @/var/www/seed/bez-vozila.txt
 $args = array_values(array_filter(array_slice($argv, 1), static fn($a) => $a !== '--dry-run'));
 $dry = in_array('--dry-run', $argv, true);
 if (count($args) < 3) {
-    fwrite(STDERR, "Upotreba: php set-feeds.php <dijelovi|vozila|radovi> <on|off> <ka4/101|ka4|all|@datoteka>... [--dry-run]\n");
+    fwrite(STDERR, "Upotreba: php set-feeds.php <dijelovi|vozila|radovi|proizvodi> <on|off> <ka4/101|ka4|all|@datoteka>... [--dry-run]\n");
     exit(1);
 }
 $feed = array_shift($args);
 $state = array_shift($args);
-if (!\Cjenik\CsvSpec::isFeed($feed) || !in_array($state, ['on', 'off'], true)) {
-    fwrite(STDERR, "Neispravan cjenik ili stanje (on|off).\n");
+$sources = $feed === 'proizvodi' ? ['dijelovi', 'vozila'] : [$feed];
+foreach ($sources as $s) {
+    if (!isset(Locations::SOURCES[$s])) {
+        fwrite(STDERR, "Neispravan izvor (dijelovi, vozila, radovi ili proizvodi).\n");
+        exit(1);
+    }
+}
+if (!in_array($state, ['on', 'off'], true)) {
+    fwrite(STDERR, "Neispravno stanje (on|off).\n");
     exit(1);
 }
 $on = $state === 'on';
@@ -68,16 +76,18 @@ if ($targets === []) {
 $changed = 0;
 $same = 0;
 foreach ($targets as $id => $key) {
-    if ($dry) {
-        echo "[dry-run] $key: $feed -> $state\n";
-        continue;
-    }
-    if (Locations::setFeed($id, $feed, $on)) {
-        $changed++;
-        Support::audit('cli', 'location.feed', "$key: $feed " . $state);
-        echo "$key: $feed $state\n";
-    } else {
-        $same++;
+    foreach ($sources as $src) {
+        if ($dry) {
+            echo "[dry-run] $key: $src -> $state\n";
+            continue;
+        }
+        if (Locations::setFeed($id, $src, $on)) {
+            $changed++;
+            Support::audit('cli', 'location.feed', "$key: $src " . $state);
+            echo "$key: $src $state\n";
+        } else {
+            $same++;
+        }
     }
 }
 if (!$dry) {

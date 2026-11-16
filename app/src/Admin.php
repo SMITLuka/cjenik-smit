@@ -309,8 +309,8 @@ final class Admin
         }
         if ($method === 'POST') {
             $d = $_POST + [];
-            foreach (array_keys(CsvSpec::FEEDS) as $feedName) {
-                $d['feed_' . $feedName] = $d['feed_' . $feedName] ?? null; // neoznacen checkbox = iskljucen feed
+            foreach (array_keys(Locations::SOURCES) as $source) {
+                $d['feed_' . $source] = $d['feed_' . $source] ?? null; // neoznacen checkbox = iskljucen izvor
             }
             if ($id === null) {
                 $newId = Locations::create($d);

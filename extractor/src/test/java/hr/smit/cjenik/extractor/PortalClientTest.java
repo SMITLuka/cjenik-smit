@@ -39,8 +39,8 @@ class PortalClientTest {
                 bodies.add(new String(new GZIPInputStream(new ByteArrayInputStream(raw)).readAllBytes(), StandardCharsets.UTF_8));
             }
             int status = failFirst.getAndUpdate(n -> n > 0 ? n - 1 : 0) > 0 ? 503 : 200;
-            byte[] out = ("{\"ok\":" + (status == 200) + ",\"locations\":[{\"grp\":\"ka4\",\"betnr\":1,\"feeds\":[\"dijelovi\",\"vozila\"]},"
-                + "{\"grp\":\"kb5\",\"betnr\":21,\"feeds\":[\"dijelovi\"]}]}").getBytes(StandardCharsets.UTF_8);
+            byte[] out = ("{\"ok\":" + (status == 200) + ",\"locations\":[{\"grp\":\"ka4\",\"betnr\":1,\"feeds\":[\"proizvodi\",\"radovi\"],\"sources\":[\"dijelovi\",\"vozila\",\"radovi\"]},"
+                + "{\"grp\":\"kb5\",\"betnr\":21,\"feeds\":[\"proizvodi\"]}]}").getBytes(StandardCharsets.UTF_8);
             ex.sendResponseHeaders(status, out.length);
             ex.getResponseBody().write(out);
             ex.close();
@@ -66,15 +66,15 @@ class PortalClientTest {
     @Test
     void putSaljeGzipIPotpisaneZaglavlja() {
         PortalClient c = new PortalClient(base + "/", "k_0123456789abcdef", "tajna-za-test-123");
-        PortalClient.Result r = c.put("KA4", 1, "dijelovi", "naziv;sifra\nA;1\n");
+        PortalClient.Result r = c.put("KA4", 1, "proizvodi", "naziv;sifra\nA;1\n");
         assertEquals(200, r.status());
         Map<String, String> h = seen.get(0);
         assertEquals("PUT", h.get("_method"));
-        assertEquals("/api/v1/ka4/1/dijelovi", h.get("_uri"));
+        assertEquals("/api/v1/ka4/1/proizvodi", h.get("_uri"));
         assertEquals("k_0123456789abcdef", h.get("x-key-id"));
         assertEquals("gzip", h.get("content-encoding"));
         assertEquals(h.get("_sha"), h.get("x-content-sha256"));       // SHA-256 tijela kako je poslano (gzip)
-        assertEquals(PortalClient.sign("tajna-za-test-123", "PUT", "/api/v1/ka4/1/dijelovi",
+        assertEquals(PortalClient.sign("tajna-za-test-123", "PUT", "/api/v1/ka4/1/proizvodi",
             h.get("x-timestamp"), h.get("x-nonce"), h.get("x-content-sha256")), h.get("x-signature"));
         assertTrue(h.get("x-nonce").matches("[0-9a-f]{24}"));
         assertTrue(h.get("x-timestamp").matches("\\d{10}"));
@@ -87,7 +87,9 @@ class PortalClientTest {
         List<PortalClient.Location> l = c.locations();
         assertEquals(2, l.size());
         assertEquals("ka4", l.get(0).grp());
-        assertEquals(List.of("dijelovi", "vozila"), l.get(0).feeds());
+        assertEquals(List.of("proizvodi", "radovi"), l.get(0).feeds());
+        assertEquals(List.of("dijelovi", "vozila", "radovi"), l.get(0).sources());
+        assertEquals(List.of(), l.get(1).sources(), "stariji portal bez popisa izvora");
         assertEquals(21, l.get(1).betnr());
         Map<String, String> h = seen.get(0);
         assertEquals("GET", h.get("_method"));
@@ -97,7 +99,7 @@ class PortalClientTest {
     @Test
     void mreznaGreskaJeStatusNula() {
         PortalClient c = new PortalClient("http://127.0.0.1:1", "k_0123456789abcdef", "x");
-        assertEquals(0, c.put("ka4", 1, "dijelovi", "a\n").status());
+        assertEquals(0, c.put("ka4", 1, "proizvodi", "a\n").status());
     }
 
     @Test
@@ -105,9 +107,9 @@ class PortalClientTest {
         failFirst.set(1);
         Config cfg = Config.fromEnv(Map.of("PORTAL_URL", base, "PORTAL_KEY_ID", "k_0123456789abcdef", "PORTAL_SECRET", "s",
             "FROM_DIR", System.getProperty("java.io.tmpdir"), "RETRIES", "3", "DEADLINE", "23:59", "TZ", "Europe/Zagreb"));
-        PortalClient.Result first = new PortalClient(cfg.portalUrl, cfg.keyId, cfg.secret).put("ka4", 1, "dijelovi", "a\n");
+        PortalClient.Result first = new PortalClient(cfg.portalUrl, cfg.keyId, cfg.secret).put("ka4", 1, "proizvodi", "a\n");
         assertEquals(503, first.status());
-        PortalClient.Result second = new PortalClient(cfg.portalUrl, cfg.keyId, cfg.secret).put("ka4", 1, "dijelovi", "a\n");
+        PortalClient.Result second = new PortalClient(cfg.portalUrl, cfg.keyId, cfg.secret).put("ka4", 1, "proizvodi", "a\n");
         assertEquals(200, second.status());
         assertEquals(2, seen.size());
         assertTrue(!seen.get(0).get("x-nonce").equals(seen.get(1).get("x-nonce")), "svaki zahtjev ima novi nonce");

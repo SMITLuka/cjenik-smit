@@ -7,7 +7,7 @@
 - Polja ne smiju sadržavati novi redak ni kontrolne znakove; tekst ne smije počinjati s `=`, `+`, `@` (zaštita od formula injectiona).
 - Datoteka mora imati barem jedan redak podataka.
 
-### `dijelovi` i `vozila` (isti stupci; proizvodi)
+### `proizvodi` (vozila i rezervni dijelovi u istoj datoteci; ista struktura)
 Struktura prema specifikaciji "Sidrene cijene Hrvatska s 17.11.2026.".
 ```
 naziv;sifra;marka;neto_kolicina;jedinica_mjere;cijena_po_jedinici_mjere;maloprodajna_cijena;posebni_oblik_prodaje;naziv_posebnog_oblika_prodaje;bazna_cijena;sidrena_cijena;barkod;dostupnost;najniza_cijena_30_dana
@@ -44,7 +44,7 @@ Svaka objava sprema se kao posebna datoteka u arhivu lokacije, s nazivom:
 
 ```
 <naziv objekta>_<oblik>_<adresa>_<oznaka>_<cjenik>_<broj pohrane>_<GGGGMMDDHHMMSS>.csv
-npr. rb-auto-zagreb_salon_ulica-1-zagreb_kb521_dijelovi_000007_20261117070000.csv
+npr. rb-auto-zagreb_salon_ulica-1-zagreb_kb521_proizvodi_000007_20261117070000.csv
 ```
 - *oblik* i *adresa* uzimaju se iz admina (Lokacije); prazno se izostavlja. *oznaka* = oznaka objekta ili <GRP><BETNR>.
 - *broj pohrane* je **redni broj objave** za tu lokaciju i cjenik (PRETPOSTAVKA — pojam u nacrtu nije definiran; mijenja se u `Pages::downloadName`).
@@ -61,8 +61,8 @@ Baza: `https://cjenik.sm-it.hr`. Svi zahtjevi su potpisani; odgovori su JSON.
 | Metoda i putanja | Opis |
 |---|---|
 | `GET /api/v1/ping` | provjera potpisa i sata |
-| `GET /api/v1/locations` | aktivne lokacije i feedovi dopušteni ključem |
-| `PUT /api/v1/{grp}/{betnr}/{feed}[?date=YYYY-MM-DD]` (`feed` = `dijelovi` \| `vozila` \| `radovi`) | tijelo = CSV (opcionalno gzip uz `Content-Encoding: gzip`). `date` smije biti **danas ili jučer**, default danas. |
+| `GET /api/v1/locations` | aktivne lokacije, cjenici (`feeds`: `proizvodi`, `radovi`) i uključeni izvori (`sources`: `dijelovi`, `vozila`, `radovi`) dopušteni ključem |
+| `PUT /api/v1/{grp}/{betnr}/{feed}[?date=YYYY-MM-DD]` (`feed` = `proizvodi` \| `radovi`) | tijelo = CSV (opcionalno gzip uz `Content-Encoding: gzip`). `date` smije biti **danas ili jučer**, default danas. |
 
 Statusi: `200` ok · `400` loš zahtjev/SHA · `401` autentikacija (potpis, sat, replay) · `403` IP ili ključ nema pravo · `404` lokacija · `409` feed isključen · `413` preveliko · `422` CSV nije prošao validaciju (`errors[]`) · `429` previše neuspjelih pokušaja · `500` greška servera.
 
@@ -80,13 +80,13 @@ Statusi: `200` ok · `400` loš zahtjev/SHA · `401` autentikacija (potpis, sat,
 kanonski_niz = METODA + "\n" + REQUEST_URI + "\n" + TIMESTAMP + "\n" + NONCE + "\n" + SHA256_TIJELA
 X-Signature  = hex( HMAC_SHA256( kljuc = TAJNA (kao string), poruka = kanonski_niz ) )
 ```
-- `REQUEST_URI` = putanja + query točno kako se šalje (npr. `/api/v1/ka4/1/dijelovi?date=2026-11-16`).
+- `REQUEST_URI` = putanja + query točno kako se šalje (npr. `/api/v1/ka4/1/proizvodi?date=2026-11-16`).
 - Za `GET` je tijelo prazno: `SHA256("")`.
 - Referentna implementacija: `agent/Send-Prices.ps1` (`Invoke-Signed`) i `app/src/Hmac.php`.
 
 ### Primjer (curl + openssl, bash)
 ```bash
-BODY=dijelovi.csv; URI=/api/v1/ka4/1/dijelovi
+BODY=proizvodi.csv; URI=/api/v1/ka4/1/proizvodi
 TS=$(date +%s); NONCE=$(openssl rand -hex 12); SHA=$(openssl dgst -sha256 -hex < "$BODY" | awk '{print $NF}')
 SIG=$(printf 'PUT\n%s\n%s\n%s\n%s' "$URI" "$TS" "$NONCE" "$SHA" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
 curl -sS -X PUT "https://cjenik.sm-it.hr$URI" -H "X-Key-Id: $KEY_ID" -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" \

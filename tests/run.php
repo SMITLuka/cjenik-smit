@@ -181,7 +181,7 @@ rrmdir($root);
 
 // ---------------------------------------------------------------- CsvSpec
 echo "CsvSpec\n";
-t('valjani dijelovi', CsvSpec::validate(tmpCsv(PROIZVODI_CSV), 'dijelovi')['ok']);
+t('valjani dijelovi', CsvSpec::validate(tmpCsv(PROIZVODI_CSV), 'proizvodi')['ok']);
 t('valjane radovi', CsvSpec::validate(tmpCsv(USLUGE_CSV), 'radovi')['ok']);
 t('BOM je dopusten', CsvSpec::validate(tmpCsv("\xEF\xBB\xBF" . USLUGE_CSV), 'radovi')['ok']);
 t('krivo zaglavlje', !CsvSpec::validate(tmpCsv("a;b\n1;2\n"), 'radovi')['ok']);
@@ -191,9 +191,9 @@ t('prazan obavezni naziv odbijen', !CsvSpec::validate(tmpCsv(str_replace('Sat ra
 t('nula redaka odbijena', !CsvSpec::validate(tmpCsv("naziv_usluge;maloprodajna_cijena;posebni_oblik_prodaje;naziv_posebnog_oblika_prodaje;bazna_cijena;sidrena_cijena;najniza_cijena_30_dana\n"), 'radovi')['ok']);
 t('posebni oblik da bez naziva odbijen', !CsvSpec::validate(tmpCsv(str_replace('55.00;ne;;55.00', '55.00;da;;55.00', USLUGE_CSV)), 'radovi')['ok']);
 t('krivi broj stupaca', !CsvSpec::validate(tmpCsv(str_replace('55.00;ne;;55.00', '55.00;ne;55.00', USLUGE_CSV)), 'radovi')['ok']);
-t('barkod mora imati 8-14 znamenki', !CsvSpec::validate(tmpCsv(str_replace('3850000000011', '12ab', PROIZVODI_CSV)), 'dijelovi')['ok']);
-t('dostupnost samo dostupno/nedostupno', !CsvSpec::validate(tmpCsv(str_replace('dostupno', 'moze', PROIZVODI_CSV)), 'dijelovi')['ok']);
-t('cijena po jedinici trazi jedinicu', !CsvSpec::validate(tmpCsv(str_replace('Filter ulja;F-100;Mazda;;kom;;', 'Filter ulja;F-100;Mazda;;;5.00;', PROIZVODI_CSV)), 'dijelovi')['ok']);
+t('barkod mora imati 8-14 znamenki', !CsvSpec::validate(tmpCsv(str_replace('3850000000011', '12ab', PROIZVODI_CSV)), 'proizvodi')['ok']);
+t('dostupnost samo dostupno/nedostupno', !CsvSpec::validate(tmpCsv(str_replace('dostupno', 'moze', PROIZVODI_CSV)), 'proizvodi')['ok']);
+t('cijena po jedinici trazi jedinicu', !CsvSpec::validate(tmpCsv(str_replace('Filter ulja;F-100;Mazda;;kom;;', 'Filter ulja;F-100;Mazda;;;5.00;', PROIZVODI_CSV)), 'proizvodi')['ok']);
 $many = "naziv_usluge;maloprodajna_cijena;posebni_oblik_prodaje;naziv_posebnog_oblika_prodaje;bazna_cijena;sidrena_cijena;najniza_cijena_30_dana\n" . str_repeat("X;1.00;ne;;1.00;1.00;1.00\n", 6);
 t('max_rows se postuje', !CsvSpec::validate(tmpCsv($many), 'radovi', 5)['ok']);
 
@@ -213,9 +213,9 @@ $ext = tmpCsv("grp;betnr;naziv;pravni_naziv;adresa;oblik_mjesta;oznaka_objekta;d
 $re = Locations::importCsv($ext);
 $roca = Locations::find('ka7', 1);
 t('prosireni uvoz: azurira postojecu, dodaje novu', $re['created'] === 1 && $re['updated'] === 1 && $re['skipped'] === 0, json_encode($re));
-t('prosireni uvoz: polja i feedovi upisani', $roca['pravni_naziv'] === 'AUTO CENTAR ROCA d.o.o.' && $roca['adresa'] === 'Ulica 5, Pula' && $roca['oblik_mjesta'] === 'salon' && $roca['oznaka_objekta'] === 'ROCA-1' && Locations::feeds($roca) === ['dijelovi', 'radovi']);
+t('prosireni uvoz: polja i feedovi upisani', $roca['pravni_naziv'] === 'AUTO CENTAR ROCA d.o.o.' && $roca['adresa'] === 'Ulica 5, Pula' && $roca['oblik_mjesta'] === 'salon' && $roca['oznaka_objekta'] === 'ROCA-1' && Locations::sources($roca) === ['dijelovi', 'radovi'] && Locations::feeds($roca) === ['proizvodi', 'radovi']);
 t('prosireni uvoz: prazna celija ne brise postojece', Locations::importCsv(tmpCsv("grp;betnr;naziv;adresa\nka7;1;Roca;\n"))['updated'] === 1 && Locations::find('ka7', 1)['adresa'] === 'Ulica 5, Pula');
-t('prosireni uvoz: nova lokacija ima iskljucen feed radovi', Locations::feeds(Locations::find('zz9', 7)) === ['dijelovi', 'vozila']);
+t('prosireni uvoz: nova lokacija ima iskljucen izvor radovi', Locations::sources(Locations::find('zz9', 7)) === ['dijelovi', 'vozila'] && Locations::feeds(Locations::find('zz9', 7)) === ['proizvodi']);
 $before = (int)Db::val('SELECT COUNT(*) FROM locations');
 $thrown = '';
 try {
@@ -223,7 +223,7 @@ try {
 } catch (InvalidArgumentException $ex) {
     $thrown = $ex->getMessage();
 }
-t('uvoz s greskom: poruka s brojem retka i nista se ne sprema (transakcija)', str_contains($thrown, 'Redak 3') && Locations::feeds(Locations::find('ka7', 1)) === ['dijelovi', 'radovi'] && (int)Db::val('SELECT COUNT(*) FROM locations') === $before, $thrown);
+t('uvoz s greskom: poruka s brojem retka i nista se ne sprema (transakcija)', str_contains($thrown, 'Redak 3') && Locations::sources(Locations::find('ka7', 1)) === ['dijelovi', 'radovi'] && (int)Db::val('SELECT COUNT(*) FROM locations') === $before, $thrown);
 $bad = '';
 try {
     Locations::importCsv(tmpCsv("grp;betnr;naziv;nepoznato\nka7;1;Roca;x\n"));
@@ -275,14 +275,14 @@ Locations::create(['grp' => 'kb1', 'betnr' => 1, 'naziv' => 'Druga koncesija']);
 $global = Keys::create('global', null, null, 'agent');
 $grpKey = Keys::create('group', 'ka4', null, 'ka4 only');
 $locKey = Keys::create('location', null, (int)Locations::find('ka4', 1)['id'], 'ka4/1 only');
-$u = '/api/v1/ka4/1/dijelovi';
+$u = '/api/v1/ka4/1/proizvodi';
 
 [$st, $b] = call($global['key_id'], $global['secret'], 'GET', '/api/v1/ping');
 t('ping s ispravnim potpisom', $st === 200 && $b['ok'] === true, json_encode($b));
 [$st, $b] = call($global['key_id'], $global['secret'], 'PUT', $u, PROIZVODI_CSV);
 t('PUT ispravan CSV -> 200', $st === 200 && $b['rows'] === 2, json_encode($b));
-t('latest.csv i datirani postoje', is_file("$root/web/ka4/1/dijelovi/latest.csv") && is_file(upFile($root, 'ka4', 1, 'dijelovi', '2026-11-17')));
-t('sadrzaj latest.csv identican', file_get_contents("$root/web/ka4/1/dijelovi/latest.csv") === PROIZVODI_CSV);
+t('latest.csv i datirani postoje', is_file("$root/web/ka4/1/proizvodi/latest.csv") && is_file(upFile($root, 'ka4', 1, 'proizvodi', '2026-11-17')));
+t('sadrzaj latest.csv identican', file_get_contents("$root/web/ka4/1/proizvodi/latest.csv") === PROIZVODI_CSV);
 t('stranica lokacije generirana', is_file("$root/web/ka4/1/index.html") && is_file("$root/web/index.html") && is_file("$root/web/robots.txt"));
 $html = (string)file_get_contents("$root/web/ka4/1/index.html");
 $rootHtml = (string)file_get_contents("$root/web/index.html");
@@ -330,11 +330,11 @@ t('potpis vezan uz URI (izmijenjen query -> 401)', $st === 401);
 [$st] = call($global['key_id'], $global['secret'], 'PUT', $u, PROIZVODI_CSV, ['HTTP_X_CONTENT_SHA256' => hash('sha256', 'nesto drugo')]);
 t('SHA tijela se mora podudarati s potpisanim', $st === 401 || $st === 400);
 
-[$st] = call($locKey['key_id'], $locKey['secret'], 'PUT', '/api/v1/ka4/2/dijelovi', PROIZVODI_CSV);
+[$st] = call($locKey['key_id'], $locKey['secret'], 'PUT', '/api/v1/ka4/2/proizvodi', PROIZVODI_CSV);
 t('kljuc lokacije ne pise u drugu lokaciju -> 403', $st === 403);
-[$st] = call($grpKey['key_id'], $grpKey['secret'], 'PUT', '/api/v1/kb1/1/dijelovi', PROIZVODI_CSV);
+[$st] = call($grpKey['key_id'], $grpKey['secret'], 'PUT', '/api/v1/kb1/1/proizvodi', PROIZVODI_CSV);
 t('kljuc koncesije ne pise u tudu koncesiju -> 403', $st === 403);
-[$st] = call($grpKey['key_id'], $grpKey['secret'], 'PUT', '/api/v1/ka4/2/dijelovi', PROIZVODI_CSV);
+[$st] = call($grpKey['key_id'], $grpKey['secret'], 'PUT', '/api/v1/ka4/2/proizvodi', PROIZVODI_CSV);
 t('kljuc koncesije pise u svoju lokaciju -> 200', $st === 200);
 [$st, $b] = call($grpKey['key_id'], $grpKey['secret'], 'GET', '/api/v1/locations');
 t('popis lokacija filtriran po opsegu kljuca', $st === 200 && count($b['locations']) === 2, json_encode($b));
@@ -351,7 +351,7 @@ t('los CSV -> 422 s popisom gresaka', $st === 422 && !empty($b['errors']), json_
 t('datum stariji od jucer -> 422', $st === 422);
 [$st] = call($global['key_id'], $global['secret'], 'PUT', $u . '?date=2026-11-16', PROIZVODI_CSV);
 t('jucerasnji datum -> 200', $st === 200);
-t('jucerasnji upload ne dira latest.csv', file_get_contents("$root/web/ka4/1/dijelovi/latest.csv") === PROIZVODI_CSV && is_file(upFile($root, 'ka4', 1, 'dijelovi', '2026-11-16')));
+t('jucerasnji upload ne dira latest.csv', file_get_contents("$root/web/ka4/1/proizvodi/latest.csv") === PROIZVODI_CSV && is_file(upFile($root, 'ka4', 1, 'proizvodi', '2026-11-16')));
 [$st] = call($global['key_id'], $global['secret'], 'PUT', $u, '');
 t('prazno tijelo -> 400', $st === 400);
 [$st] = call($global['key_id'], $global['secret'], 'GET', '/api/v1/ping', '', [], false, '198.51.100.9');
@@ -405,9 +405,9 @@ Locations::create(['grp' => 'ka4', 'betnr' => 1, 'naziv' => 'Split', 'feed_vozil
 Locations::create(['grp' => 'ka4', 'betnr' => 2, 'naziv' => 'Sibenik', 'feed_vozila' => 0, 'feed_radovi' => 0]);
 $k = Keys::create('global', null, null, 'agent');
 Clock::set(new DateTimeImmutable('2026-11-16 07:00:00', new DateTimeZone('Europe/Zagreb')));
-call($k['key_id'], $k['secret'], 'PUT', '/api/v1/ka4/1/dijelovi', PROIZVODI_CSV);
+call($k['key_id'], $k['secret'], 'PUT', '/api/v1/ka4/1/proizvodi', PROIZVODI_CSV);
 call($k['key_id'], $k['secret'], 'PUT', '/api/v1/ka4/1/radovi', USLUGE_CSV);
-call($k['key_id'], $k['secret'], 'PUT', '/api/v1/ka4/2/dijelovi', PROIZVODI_CSV);
+call($k['key_id'], $k['secret'], 'PUT', '/api/v1/ka4/2/proizvodi', PROIZVODI_CSV);
 
 Clock::set(new DateTimeImmutable('2026-11-17 07:30:00', new DateTimeZone('Europe/Zagreb')));
 $s = Maintenance::run();
@@ -416,7 +416,7 @@ Clock::set(new DateTimeImmutable('2026-11-17 07:42:00', new DateTimeZone('Europe
 Maintenance::run();
 t('07:42: alert je zabiljezen jednom', \Cjenik\Support::getState('alert_sent:2026-11-17') !== null);
 // jedan feed stigne na vrijeme
-call($k['key_id'], $k['secret'], 'PUT', '/api/v1/ka4/2/dijelovi', PROIZVODI_CSV);
+call($k['key_id'], $k['secret'], 'PUT', '/api/v1/ka4/2/proizvodi', PROIZVODI_CSV);
 Clock::set(new DateTimeImmutable('2026-11-17 07:56:00', new DateTimeZone('Europe/Zagreb')));
 $s = Maintenance::run();
 t('07:56: preneseno 2 (ka4/1 dijelovi+radovi), ka4/2 stigao sam', count($s['carried']) === 2 && count($s['missing']) === 2, json_encode($s));
@@ -434,12 +434,17 @@ $root = freshEnv();
 Locations::create(['grp' => 'ka4', 'betnr' => 101, 'naziv' => 'Split']);
 Locations::create(['grp' => 'ka4', 'betnr' => 102, 'naziv' => 'Sibenik']);
 $id101 = (int)Locations::find('ka4', 101)['id'];
-t('prije: sva tri cjenika ukljucena', Locations::feeds(Locations::find('ka4', 101)) === ['dijelovi', 'vozila', 'radovi']);
+t('prije: sva tri izvora ukljucena, objavljuju se dva cjenika', Locations::sources(Locations::find('ka4', 101)) === ['dijelovi', 'vozila', 'radovi'] && Locations::feeds(Locations::find('ka4', 101)) === ['proizvodi', 'radovi']);
 t('setFeed vozila off mijenja', Locations::setFeed($id101, 'vozila', false) === true);
-t('nakon: vozila nema u popisu cjenika', Locations::feeds(Locations::find('ka4', 101)) === ['dijelovi', 'radovi']);
-t('susjedna lokacija nije dirnuta', Locations::feeds(Locations::find('ka4', 102)) === ['dijelovi', 'vozila', 'radovi']);
+t('nakon: izvor vozila iskljucen, cjenik proizvodi ostaje (ima dijelove)', Locations::sources(Locations::find('ka4', 101)) === ['dijelovi', 'radovi'] && Locations::feeds(Locations::find('ka4', 101)) === ['proizvodi', 'radovi']);
+t('susjedna lokacija nije dirnuta', Locations::sources(Locations::find('ka4', 102)) === ['dijelovi', 'vozila', 'radovi']);
 t('ponovno isto stanje: nema promjene', Locations::setFeed($id101, 'vozila', false) === false);
-t('setFeed vozila on vraca cjenik', Locations::setFeed($id101, 'vozila', true) === true && in_array('vozila', Locations::feeds(Locations::find('ka4', 101)), true));
+t('setFeed vozila on vraca izvor', Locations::setFeed($id101, 'vozila', true) === true && in_array('vozila', Locations::sources(Locations::find('ka4', 101)), true));
+Locations::setFeed($id101, 'vozila', false);
+Locations::setFeed($id101, 'dijelovi', false);
+t('bez dijelova i vozila nema cjenika proizvodi, radovi ostaju', Locations::feeds(Locations::find('ka4', 101)) === ['radovi']);
+Locations::setFeed($id101, 'dijelovi', true);
+Locations::setFeed($id101, 'vozila', true);
 $bad = false;
 try {
     Locations::setFeed($id101, 'vozila; DROP TABLE locations', false);
@@ -457,7 +462,23 @@ t('nepoznata lokacija odbijena', $bad);
 Locations::setFeed($id101, 'vozila', false);
 $k = Keys::create('global', null, null, 'agent');
 $r = call($k['key_id'], $k['secret'], 'GET', '/api/v1/locations', '');
-t('API vise ne nudi iskljuceni cjenik', !str_contains(json_encode($r), '"betnr":101,"feeds":["dijelovi","vozila"'), json_encode($r));
+t('API javlja cjenike i ukljucene izvore (vozila iskljucena)', str_contains(json_encode($r), '"betnr":101,"naziv":"Split","feeds":["proizvodi","radovi"],"sources":["dijelovi","radovi"]'), json_encode($r));
+rrmdir($root);
+
+// ---------------------------------------------------------------- jednokratno ciscenje starih cjenika dijelovi/vozila
+echo "Ciscenje starih cjenika\n";
+$root = freshEnv();
+Locations::create(['grp' => 'ka4', 'betnr' => 1, 'naziv' => 'Split']);
+$lid = (int)Locations::find('ka4', 1)['id'];
+foreach (['dijelovi', 'vozila', 'radovi'] as $old) {
+    @mkdir("$root/web/ka4/1/$old", 0777, true);
+    file_put_contents("$root/web/ka4/1/$old/latest.csv", "x\n");
+    Db::run('INSERT INTO uploads (location_id, feed, price_date, rows_count, bytes, sha256, source, created_at) VALUES (?,?,?,?,?,?,?,?)', [$lid, $old, '2026-11-16', 1, 2, str_repeat('a', 64), 'agent', '2026-11-16 06:00:00']);
+}
+$p = Locations::purgeLegacyFeeds();
+t('stari cjenici dijelovi i vozila obrisani (zapisi i mape)', $p['done'] === true && $p['uploads'] === 2 && !is_dir("$root/web/ka4/1/dijelovi") && !is_dir("$root/web/ka4/1/vozila"));
+t('radovi nisu dirnuti', is_file("$root/web/ka4/1/radovi/latest.csv") && (int)Db::val("SELECT COUNT(*) FROM uploads WHERE feed = 'radovi'") === 1);
+t('ciscenje je jednokratno', Locations::purgeLegacyFeeds()['done'] === false);
 rrmdir($root);
 
 // ---------------------------------------------------------------- slug (javna adresa po nazivu)
@@ -503,50 +524,53 @@ $r = Locations::delete((int)Locations::find('ka7', 1)['id']);
 t('delete radi i kad koncesija ima slug', !is_dir("$root/web/autocentarroca") && $r['concession_removed'] === true);
 rrmdir($root);
 
-// ---------------------------------------------------------------- tri odvojena cjenika (dijelovi / vozila / radovi)
+// ---------------------------------------------------------------- dva cjenika: proizvodi (vozila i dijelovi zajedno) i radovi
 echo "Feedovi\n";
 $root = freshEnv();
 Locations::create(['grp' => 'kb5', 'betnr' => 21, 'naziv' => 'RB AUTO ZAGREB']);
 $k = Keys::create('global', null, null, 'agent');
-t('lokacija ima tri feeda', Locations::feeds(Locations::find('kb5', 21)) === ['dijelovi', 'vozila', 'radovi']);
-[$s1] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/dijelovi', PROIZVODI_CSV);
-[$s2] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/vozila', str_replace('Filter ulja', 'Mazda CX-5', PROIZVODI_CSV));
+t('lokacija objavljuje dva cjenika', Locations::feeds(Locations::find('kb5', 21)) === ['proizvodi', 'radovi']);
+[$s1] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/proizvodi', PROIZVODI_CSV . "Mazda CX-5;123456;Mazda;1;KOM;30000.00;30000.00;ne;;30000.00;30000.00;;dostupno;30000.00\n");
 [$s3] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/radovi', USLUGE_CSV);
-t('sva tri feeda se primaju', $s1 === 200 && $s2 === 200 && $s3 === 200, "$s1/$s2/$s3");
-t('svaki feed ima svoju datoteku i sadrzaj', str_contains((string)file_get_contents("$root/web/kb5/21/vozila/latest.csv"), 'Mazda CX-5') && !str_contains((string)file_get_contents("$root/web/kb5/21/dijelovi/latest.csv"), 'Mazda CX-5') && is_file("$root/web/kb5/21/radovi/latest.csv"));
-[$s4] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/proizvodi', PROIZVODI_CSV);
-[$s5] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/usluge', USLUGE_CSV);
-t('stari feedovi proizvodi/usluge vise ne postoje (404)', $s4 === 404 && $s5 === 404, "$s4/$s5");
+t('oba cjenika se primaju', $s1 === 200 && $s3 === 200, "$s1/$s3");
+t('vozila i dijelovi su u istoj datoteci', str_contains((string)file_get_contents("$root/web/kb5/21/proizvodi/latest.csv"), 'Mazda CX-5') && str_contains((string)file_get_contents("$root/web/kb5/21/proizvodi/latest.csv"), 'Filter ulja') && is_file("$root/web/kb5/21/radovi/latest.csv"));
+[$s4] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/dijelovi', PROIZVODI_CSV);
+[$s5] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/vozila', PROIZVODI_CSV);
+[$s5b] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/usluge', USLUGE_CSV);
+t('stari odvojeni cjenici dijelovi/vozila/usluge vise ne postoje (404)', $s4 === 404 && $s5 === 404 && $s5b === 404, "$s4/$s5/$s5b");
 [$s6, $b6] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/radovi', PROIZVODI_CSV);
-t('radovi odbija stupce proizvoda (422), dijelovi odbija stupce usluga', $s6 === 422 && call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/dijelovi', USLUGE_CSV)[0] === 422);
+t('radovi odbija stupce proizvoda (422), proizvodi odbija stupce usluga', $s6 === 422 && call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/proizvodi', USLUGE_CSV)[0] === 422);
 $h = (string)file_get_contents("$root/web/kb5/21/index.html");
-t('stranica lokacije ima tri odvojena odjeljka', str_contains($h, 'Rezervni dijelovi') && str_contains($h, '>Vozila<') && str_contains($h, 'Radovi (usluge)'));
+t('stranica lokacije ima dva odjeljka: Vozila i proizvodi, Radovi', str_contains($h, 'Vozila i proizvodi') && str_contains($h, 'Radovi (usluge)') && !str_contains($h, '>Rezervni dijelovi<'));
+Locations::update((int)Locations::find('kb5', 21)['id'], ['naziv' => 'RB AUTO ZAGREB', 'feed_dijelovi' => 0, 'feed_vozila' => 0, 'feed_radovi' => 1, 'active' => 1]);
+t('bez dijelova i vozila nema cjenika proizvodi', Locations::feeds(Locations::find('kb5', 21)) === ['radovi']);
+[$s7] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/proizvodi', PROIZVODI_CSV);
+t('iskljuceni cjenik se ne prima (409)', $s7 === 409);
+$locsJson = call($k['key_id'], $k['secret'], 'GET', '/api/v1/locations', '');
+t('API vise ne nudi cjenik proizvodi te lokacije', str_contains(json_encode($locsJson), '"betnr":21,"naziv":"RB AUTO ZAGREB","feeds":["radovi"],"sources":["radovi"]'), json_encode($locsJson));
 Locations::update((int)Locations::find('kb5', 21)['id'], ['naziv' => 'RB AUTO ZAGREB', 'feed_dijelovi' => 1, 'feed_vozila' => 0, 'feed_radovi' => 1, 'active' => 1]);
-t('feed se moze iskljuciti po lokaciji', Locations::feeds(Locations::find('kb5', 21)) === ['dijelovi', 'radovi']);
-[$s7] = call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/vozila', PROIZVODI_CSV);
-t('iskljuceni feed se ne prima (409)', $s7 === 409);
-
+t('samo dijelovi ukljuceni: cjenik proizvodi postoji', Locations::feeds(Locations::find('kb5', 21)) === ['proizvodi', 'radovi'] && Locations::sources(Locations::find('kb5', 21)) === ['dijelovi', 'radovi']);
 // naziv datoteke prema nacrtu Pravilnika (cl. 6(2)), broj pohrane, zamjena istog dana, neto kolicina
 $root2 = $root;
 Locations::update((int)Locations::find('kb5', 21)['id'], ['naziv' => 'RB AUTO ZAGREB', 'adresa' => 'Ulica 1, Zagreb', 'oblik_mjesta' => 'Salon', 'feed_dijelovi' => 1, 'feed_vozila' => 1, 'feed_radovi' => 1, 'active' => 1]);
 Clock::set(new DateTimeImmutable('2026-11-17 07:00:00', new DateTimeZone('Europe/Zagreb')));
-call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/dijelovi', PROIZVODI_CSV);
-$n1 = basename(upFile($root2, 'kb5', 21, 'dijelovi', '2026-11-17'));
-t('naziv datoteke: objekt_oblik_adresa_oznaka_feed_broj_vrijeme', $n1 === 'rb-auto-zagreb_salon_ulica-1-zagreb_kb521_dijelovi_000003_20261117070000.csv' || preg_match('/^rb-auto-zagreb_salon_ulica-1-zagreb_kb521_dijelovi_\d{6}_20261117070000\.csv$/', $n1) === 1, $n1);
+call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/proizvodi', PROIZVODI_CSV);
+$n1 = basename(upFile($root2, 'kb5', 21, 'proizvodi', '2026-11-17'));
+t('naziv datoteke: objekt_oblik_adresa_oznaka_feed_broj_vrijeme', $n1 === 'rb-auto-zagreb_salon_ulica-1-zagreb_kb521_proizvodi_000003_20261117070000.csv' || preg_match('/^rb-auto-zagreb_salon_ulica-1-zagreb_kb521_proizvodi_\d{6}_20261117070000\.csv$/', $n1) === 1, $n1);
 $seq1 = (int)substr($n1, -25, 6);
 Clock::set(new DateTimeImmutable('2026-11-17 07:30:00', new DateTimeZone('Europe/Zagreb')));
-call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/dijelovi', PROIZVODI_CSV);
-$n2 = basename(upFile($root2, 'kb5', 21, 'dijelovi', '2026-11-17'));
+call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/proizvodi', PROIZVODI_CSV);
+$n2 = basename(upFile($root2, 'kb5', 21, 'proizvodi', '2026-11-17'));
 t('broj pohrane raste pri novoj objavi, vrijeme slanja se mijenja', $n2 !== $n1 && (int)substr($n2, -25, 6) === $seq1 + 1 && str_ends_with($n2, '_20261117073000.csv'), "$n1 / $n2");
-t('ponovni upload istog dana zamjenjuje staru datoteku (nema duplikata)', !is_file("$root2/web/kb5/21/dijelovi/$n1") && is_file("$root2/web/kb5/21/dijelovi/$n2"));
+t('ponovni upload istog dana zamjenjuje staru datoteku (nema duplikata)', !is_file("$root2/web/kb5/21/proizvodi/$n1") && is_file("$root2/web/kb5/21/proizvodi/$n2"));
 $h2 = (string)file_get_contents("$root2/web/kb5/21/index.html");
 t('stranica linka na datoteku s propisanim nazivom (ne na datum.csv)', str_contains($h2, $n2) && !str_contains($h2, '2026-11-17.csv'));
-t('neto_kolicina: valjan broj prolazi', CsvSpec::validate(tmpCsv(str_replace('Filter ulja;F-100;Mazda;;kom;;', 'Filter ulja;F-100;Mazda;0.75;l;;', PROIZVODI_CSV)), 'dijelovi')['ok']);
-t('neto_kolicina: zarez i tekst se odbijaju', !CsvSpec::validate(tmpCsv(str_replace('Filter ulja;F-100;Mazda;;kom;;', 'Filter ulja;F-100;Mazda;0,75;l;;', PROIZVODI_CSV)), 'dijelovi')['ok'] && !CsvSpec::validate(tmpCsv(str_replace('Filter ulja;F-100;Mazda;;kom;;', 'Filter ulja;F-100;Mazda;5 l;l;;', PROIZVODI_CSV)), 'dijelovi')['ok']);
+t('neto_kolicina: valjan broj prolazi', CsvSpec::validate(tmpCsv(str_replace('Filter ulja;F-100;Mazda;;kom;;', 'Filter ulja;F-100;Mazda;0.75;l;;', PROIZVODI_CSV)), 'proizvodi')['ok']);
+t('neto_kolicina: zarez i tekst se odbijaju', !CsvSpec::validate(tmpCsv(str_replace('Filter ulja;F-100;Mazda;;kom;;', 'Filter ulja;F-100;Mazda;0,75;l;;', PROIZVODI_CSV)), 'proizvodi')['ok'] && !CsvSpec::validate(tmpCsv(str_replace('Filter ulja;F-100;Mazda;;kom;;', 'Filter ulja;F-100;Mazda;5 l;l;;', PROIZVODI_CSV)), 'proizvodi')['ok']);
 t('zaglavlje bez bazna_cijena / najniza_cijena_30_dana se odbija', !CsvSpec::validate(tmpCsv("naziv_usluge;maloprodajna_cijena;posebni_oblik_prodaje;naziv_posebnog_oblika_prodaje;sidrena_cijena\nX;1.00;ne;;1.00\n"), 'radovi')['ok']);
 t('bazna_cijena je obavezna', !CsvSpec::validate(tmpCsv(str_replace('55.00;55.00;55.00', ';55.00;55.00', USLUGE_CSV)), 'radovi')['ok']);
 t('najniza_cijena_30_dana je obavezna', !CsvSpec::validate(tmpCsv(str_replace('55.00;55.00;55.00', '55.00;55.00;', USLUGE_CSV)), 'radovi')['ok']);
-t('staro zaglavlje bez neto_kolicina se odbija', !CsvSpec::validate(tmpCsv("naziv;sifra;marka;jedinica_mjere;cijena_po_jedinici_mjere;maloprodajna_cijena;posebni_oblik_prodaje;naziv_posebnog_oblika_prodaje;sidrena_cijena;barkod;dostupnost\nX;1;M;kom;;1.00;ne;;1.00;;dostupno\n"), 'dijelovi')['ok']);
+t('staro zaglavlje bez neto_kolicina se odbija', !CsvSpec::validate(tmpCsv("naziv;sifra;marka;jedinica_mjere;cijena_po_jedinici_mjere;maloprodajna_cijena;posebni_oblik_prodaje;naziv_posebnog_oblika_prodaje;sidrena_cijena;barkod;dostupnost\nX;1;M;kom;;1.00;ne;;1.00;;dostupno\n"), 'proizvodi')['ok']);
 rrmdir($root);
 
 // ---------------------------------------------------------------- brisanje lokacije

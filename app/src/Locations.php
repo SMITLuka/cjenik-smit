@@ -26,14 +26,34 @@ final class Locations
         return Db::one('SELECT * FROM locations WHERE id = ?', [$id]);
     }
 
-    /** @return list<string> aktivni feedovi lokacije */
+    /**
+     * Izvori podataka koje admin moze ukljuciti po lokaciji (zastavice feed_<izvor> u tablici locations).
+     * Izvori 'dijelovi' i 'vozila' objavljuju se zajedno u jednom cjeniku 'proizvodi'; 'radovi' je zaseban cjenik.
+     */
+    public const SOURCES = ['dijelovi' => 'Rezervni dijelovi', 'vozila' => 'Vozila', 'radovi' => 'Radovi (usluge)'];
+
+    /** @return list<string> ukljuceni izvori lokacije (dijelovi, vozila, radovi) */
+    public static function sources(array $loc): array
+    {
+        $s = [];
+        foreach (array_keys(self::SOURCES) as $src) {
+            if ((int)($loc['feed_' . $src] ?? 0) === 1) {
+                $s[] = $src;
+            }
+        }
+        return $s;
+    }
+
+    /** @return list<string> objavljeni cjenici lokacije: 'proizvodi' (vozila i/ili dijelovi) i 'radovi' */
     public static function feeds(array $loc): array
     {
+        $src = self::sources($loc);
         $f = [];
-        foreach (array_keys(CsvSpec::FEEDS) as $feed) {
-            if ((int)($loc['feed_' . $feed] ?? 0) === 1) {
-                $f[] = $feed;
-            }
+        if (in_array('dijelovi', $src, true) || in_array('vozila', $src, true)) {
+            $f[] = 'proizvodi';
+        }
+        if (in_array('radovi', $src, true)) {
+            $f[] = 'radovi';
         }
         return $f;
     }
@@ -161,13 +181,14 @@ final class Locations
     }
 
     /**
-     * Ukljucuje/iskljucuje jedan cjenik (dijelovi|vozila|radovi) lokacije. Iskljuceni cjenik agent/extractor ne dobiva
-     * u popisu, a pregled ga ne racuna kao "nedostaje". Vraca false ako je cjenik vec bio u tom stanju.
+     * Ukljucuje/iskljucuje jedan izvor (dijelovi|vozila|radovi) lokacije. Cjenik 'proizvodi' postoji dok je ukljucen
+     * barem jedan od izvora dijelovi/vozila. Iskljuceno agent/extractor ne dobiva u popisu, a pregled ne racuna
+     * kao "nedostaje". Vraca false ako je izvor vec bio u tom stanju.
      */
     public static function setFeed(int $id, string $feed, bool $on): bool
     {
-        if (!CsvSpec::isFeed($feed)) {
-            throw new InvalidArgumentException("Nepoznat cjenik '$feed' (dijelovi, vozila ili radovi).");
+        if (!isset(self::SOURCES[$feed])) {
+            throw new InvalidArgumentException("Nepoznat izvor '$feed' (dijelovi, vozila ili radovi).");
         }
         $loc = self::byId($id);
         if ($loc === null) {
@@ -213,6 +234,36 @@ final class Locations
             }
         }
         return ['files' => $files, 'concession_removed' => $removed];
+    }
+
+    /**
+     * Jednokratno ciscenje nakon spajanja cjenika dijelova i vozila u 'proizvodi': brise zapise uploada i mape
+     * starih cjenika 'dijelovi' i 'vozila' (nastali u probnom razdoblju). Poziva se iz bin/migrate.php.
+     * @return array{done:bool, uploads:int, files:int}
+     */
+    public static function purgeLegacyFeeds(): array
+    {
+        if (Support::getState('legacy_feeds_purged') !== null) {
+            return ['done' => false, 'uploads' => 0, 'files' => 0];
+        }
+        $uploads = (int)Db::val("SELECT COUNT(*) FROM uploads WHERE feed IN ('dijelovi', 'vozila')");
+        Db::run("DELETE FROM uploads WHERE feed IN ('dijelovi', 'vozila')");
+        $files = 0;
+        foreach (self::all(false) as $loc) {
+            $path = self::pathSlug((string)$loc['grp']);
+            if (!self::validPath($path)) {
+                continue;
+            }
+            foreach (['dijelovi', 'vozila'] as $old) {
+                $dir = Publisher::webroot() . '/' . $path . '/' . (int)$loc['betnr'] . '/' . $old;
+                if (is_dir($dir)) {
+                    $files += self::removeTree($dir);
+                    @rmdir($dir);
+                }
+            }
+        }
+        Support::setState('legacy_feeds_purged', Clock::utcStamp());
+        return ['done' => true, 'uploads' => $uploads, 'files' => $files];
     }
 
     /** Rekurzivno brise mapu (samo unutar webroota); vraca broj obrisanih datoteka. */

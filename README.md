@@ -6,18 +6,18 @@ Javne stranice i CSV datoteke za svaku lokaciju:
 https://cjenik.sm-it.hr/                                neutralna stranica (BEZ popisa koncesija)
 https://cjenik.sm-it.hr/autocentarroca/                 koncesija KA7 (samo njezine lokacije)
 https://cjenik.sm-it.hr/autocentarroca/1/               lokacija BETNR 1 (preuzimanje + arhiva 30 dana)
-https://cjenik.sm-it.hr/autocentarroca/1/dijelovi/latest.csv       rezervni dijelovi (stalni URL)
-https://cjenik.sm-it.hr/autocentarroca/1/vozila/latest.csv         vozila (stalni URL)
+https://cjenik.sm-it.hr/autocentarroca/1/proizvodi/latest.csv      vozila i rezervni dijelovi, jedna datoteka (stalni URL)
+https://cjenik.sm-it.hr/autocentarroca/1/radovi/latest.csv         radovi/usluge (stalni URL)
 https://cjenik.sm-it.hr/autocentarroca/1/radovi/latest.csv         radovi (stalni URL)
-https://cjenik.sm-it.hr/autocentarroca/1/dijelovi/2026-11-17.csv  arhiva (isto za vozila i radovi) (zadnjih 30 dana)
+https://cjenik.sm-it.hr/autocentarroca/1/proizvodi/<naziv datoteke>.csv  arhiva (isto za radove) (zadnjih 30 dana)
 https://cjenik.sm-it.hr/autocentarroca/format.html      opis stupaca (po koncesiji; opća kopija na /format.html)
 ```
 
 **Naziv datoteke** svake objave prati nacrt Pravilnika (čl. 6(2)): objekt, oblik, adresa, oznaka, cjenik, broj pohrane i vrijeme slanja — vidi `docs/CSV-spec.md`. Uz to postoji stalni `latest.csv`.
 
-**Oznaka u adresi (slug) je odvojena od interne oznake (GRP).** Javno je `/autocentarroca/`, a interno (baza, agent, API) ostaje `KA7`. Slug se postavlja u adminu (*Koncesije*) ili u `seed/concessions.csv` (stupac `slug`); ako nije postavljen, u adresi je GRP (`/ka7/`). Promjena sluga premješta mapu i **stari URL odmah daje 404**. Agent i API se ne mijenjaju: i dalje šalju na `/api/v1/ka7/1/dijelovi`.
+**Oznaka u adresi (slug) je odvojena od interne oznake (GRP).** Javno je `/autocentarroca/`, a interno (baza, agent, API) ostaje `KA7`. Slug se postavlja u adminu (*Koncesije*) ili u `seed/concessions.csv` (stupac `slug`); ako nije postavljen, u adresi je GRP (`/ka7/`). Promjena sluga premješta mapu i **stari URL odmah daje 404**. Agent i API se ne mijenjaju: i dalje šalju na `/api/v1/ka7/1/proizvodi`.
 
-**Tri odvojena cjenika po lokaciji:** `dijelovi` (rezervni dijelovi), `vozila` i `radovi` — svaki ima svoj CSV i svoj SQL u agentu; lokacija koja nema npr. vozila isključi taj cjenik u adminu (Lokacije).
+**Dva cjenika po lokaciji** (prema specifikaciji „Sidrene cijene Hrvatska s 17.11.2026.”): `proizvodi` (**vozila i rezervni dijelovi u istoj datoteci**, ista struktura) i `radovi` (usluge). Podaci dolaze iz tri **izvora** s vlastitim SQL-om: `dijelovi`, `vozila` i `radovi`. U adminu (Lokacije) se po lokaciji uključuju izvori; ako lokacija nema npr. vozila, isključi se izvor „vozila” i cjenik `proizvodi` sadrži samo dijelove. Cjenik `proizvodi` postoji dok je uključen barem jedan od izvora dijelovi/vozila.
 
 Javni dio **nema prijavu, captchu ni bot-zaštitu** i poslužuje se kao obične datoteke (bez PHP-a).
 
@@ -66,7 +66,7 @@ Hosting nikad ne otvara vezu prema vašoj mreži. Jedini ulaz za podatke je potp
 
 **Baza:** `docker/db/01-schema.sql` (9 tablica, generirano iz koda) i `docker/db/02-user.sql` (baza `cjenik` i korisnik `cjenik_app`, lozinka se generira i ide samo u `DB_PASS`). Tko je što poslao i kada bilježi tablica `uploads` (`key_id` = API ključ pošiljatelja, lokacija, cjenik, datum cijena, broj redaka, SHA-256, naziv datoteke, vrijeme), a radnje u adminu `audit_log`.
 
-**Struktura mapa s CSV-ovima** (ispod `/var/www/html`): `<oznaka koncesije>/<broj lokacije>/<cjenik>/<naziv datoteke>.csv` plus stalni `latest.csv`, npr. `autocentarroca/1/dijelovi/…csv`. Oznaka je slug koncesije (ili GRP). Mape aplikacija sama kreira pri prvom slanju, ali samo za lokacije koje postoje u bazi (zaštita od pisanja u proizvoljne putanje); starije od 30 dana briše cron.
+**Struktura mapa s CSV-ovima** (ispod `/var/www/html`): `<oznaka koncesije>/<broj lokacije>/<cjenik>/<naziv datoteke>.csv` plus stalni `latest.csv`, npr. `autocentarroca/1/proizvodi/…csv`. Oznaka je slug koncesije (ili GRP). Mape aplikacija sama kreira pri prvom slanju, ali samo za lokacije koje postoje u bazi (zaštita od pisanja u proizvoljne putanje); starije od 30 dana briše cron.
 
 Volumeni: `/var/www/html` (objavljeni cjenici i CSV, **mora biti trajan**) i `/var/www/storage` (logovi, backup). Pri pokretanju kontejner migrira bazu, regenerira javne stranice i svakih 5 minuta pokreće cron (retencija 30 dana, watchdog, prijenos jučerašnjeg cjenika).
 
@@ -93,10 +93,10 @@ Coolify: nova aplikacija iz **istog repoa**, *Base Directory* `/extractor`, Dock
 | `PORTAL_KEY_ID`, `PORTAL_SECRET` | API ključ iz admina (*Ključevi*, opseg „Sve lokacije”); tajna samo u Coolify secretima |
 | `AS400_HOST`, `AS400_USER`, `AS400_PASSWORD` | isti nazivi kao u MIMV-u. **Poseban korisnik samo za čitanje**, ne korisnik s širokim ovlastima |
 | `AS400_JDBC_PARAMS` | neobavezno, zadano `extended metadata=false;keep alive=true;libraries=QGPL;prompt=false;errors=full;date format=iso` |
-| `SQL_DIR` | zadano `/config/sql`; unutra `dijelovi/*.sql`, `vozila/*.sql`, `radovi/*.sql` (ili `dijelovi.sql`…). U upitu `{GRP}` i `{BETNR}`. **SQL se ne nalazi u repou** (otkriva strukturu baze): montira se kao datoteke |
+| `SQL_DIR` | zadano `/config/sql`; unutra po izvoru `dijelovi/*.sql`, `vozila/*.sql`, `radovi/*.sql` (ili `dijelovi.sql`…); cjenik `proizvodi` spaja izvore dijelovi i vozila (samo one koje je portal uključio za lokaciju). U upitu `{GRP}` i `{BETNR}`. **SQL se ne nalazi u repou** (otkriva strukturu baze): montira se kao datoteke |
 | `RUN_AT`, `DEADLINE`, `TZ` | zadano `07:00`, `07:45` (nakon toga nema ponavljanja), `Europe/Zagreb` |
 | `RETRIES` | zadano 4 (eksponencijalno čekanje) |
-| `ONLY`, `FEED`, `DRY_RUN`, `RUN_ONCE`, `RUN_ON_START` | proba: `RUN_ONCE=true DRY_RUN=true ONLY=kb5/1 FEED=dijelovi` sprema CSV u `/data/out/<datum>/` bez slanja |
+| `ONLY`, `FEED`, `SOURCES`, `DRY_RUN`, `RUN_ONCE`, `RUN_ON_START` | proba: `RUN_ONCE=true DRY_RUN=true ONLY=kb5/1 FEED=proizvodi` sprema CSV u `/data/out/<datum>/` bez slanja. `FEED` = `proizvodi` ili `radovi`; `SOURCES` (npr. `dijelovi`) sužava izvore kad portal ne daje popis |
 | `FROM_DIR` | proba bez AS400: čita `<grp>_<broj>_<cjenik>.csv` iz mape |
 
 **Trajni volumen `/data` je obavezan:** u `/data/state/history` je povijest cijena za „najnižu cijenu u 30 dana” (za dijelove u bazi nema žurnala). Bez volumena se povijest gubi pri svakom deployu. Povijest agenta (`agent\state\history\*.tsv`) ima isti oblik i može se kopirati u `/data/state/history/`.
@@ -107,7 +107,7 @@ Sigurnost: lozinka AS400 i API tajna samo u Coolify secretima; servis ne sluša 
 
 ## Uključivanje i isključivanje cjenika
 
-Cjenik (`dijelovi`, `vozila`, `radovi`) koji lokacija nema isključuje se da pregled ne javlja „nedostaje” i da ga extractor ne pokušava slati. Pojedinačno u adminu (Lokacije → uredi) ili grupno iz terminala kontejnera:
+Izvor (`dijelovi`, `vozila`, `radovi`) koji lokacija nema isključuje se da pregled ne javlja „nedostaje” i da ga extractor ne pokušava slati (`proizvodi` kao argument znači oba izvora, dijelove i vozila). Pojedinačno u adminu (Lokacije → uredi) ili grupno iz terminala kontejnera:
 
 ```bash
 # vozila isključena za lokacije bez vozila (popis je u seed/bez-vozila.txt)
@@ -179,7 +179,7 @@ copy sql\radovi.sql.example sql\radovi.sql
 ```
 
 - Retci SQL-a koji počinju s `--` agent uklanja prije izvršavanja (neki ODBC driveri ne podržavaju komentare).
-- **SQL po feedu može biti mapa:** `agent\sql\dijelovi\*.sql` (npr. `01-lager-rd.sql`) — agent izvrši svaku datoteku i spoji retke u jedan CSV. Ili jedna datoteka `agent\sql\dijelovi.sql`. Isto za `vozila` i `radovi`.
+- **SQL po izvoru može biti mapa:** `agent\sql\dijelovi\*.sql` (npr. `01-lager-rd.sql`) — agent izvrši svaku datoteku i spoji retke u jedan CSV. Ili jedna datoteka `agent\sql\dijelovi.sql`. Isto za `vozila` i `radovi`. Cjenik `proizvodi` spaja izvore `dijelovi` i `vozila` u jednu datoteku. Probni prolaz: `-Feed proizvodi` (ili `-Feed radovi`); `-Sources dijelovi` sužava izvore.
 - **Oznake u SQL-u:** `{GRP}` (oznaka koncesije malim slovima) i `{BETNR}` (broj lokacije); zamjenjuju se u nazivima biblioteka/tablica u SQL-u prema konvenciji vaše baze. Parametri `?` su neobavezni (veže se samo onoliko koliko ih ima: 1 = GRP, 2 = GRP i BETNR).
 - SQL se čita kao UTF-8, a ako nije valjan UTF-8, kao Windows-1250.
 - DB korisnik neka bude **read-only** i ograničen na potrebne tablice/view-ove.
@@ -193,7 +193,7 @@ copy sql\radovi.sql.example sql\radovi.sql
 - Cjenici starije od 30 dana brišu se automatski (u principu reda).
 
 ## Pravne napomene (sažetak istraživanja)
-- Obveza: Odluka o objavi cjenika (NN 101/2026), primjena **17.11.2026.** (NN 110/2026). Proizvodi (dijelovi, vozila): ažuriranje 1× dnevno do 08:00; usluge (radovi): pri svakoj promjeni do 08:00; dostupno 30 dana; CSV ili XML; mora se moći dohvaćati automatiziranim alatima.
+- Obveza: Odluka o objavi cjenika (NN 101/2026), primjena **17.11.2026.** (NN 110/2026). Proizvodi (vozila i dijelovi): ažuriranje 1× dnevno do 08:00; usluge (radovi): pri svakoj promjeni do 08:00; dostupno 30 dana; CSV ili XML; mora se moći dohvaćati automatiziranim alatima.
 - Službena CSV specifikacija ne postoji — format u `docs/CSV-spec.md` je naš izbor i lako se mijenja u `app/src/CsvSpec.php`.
 - **Otvoreno (potvrditi s HOK-om/Ministarstvom):** (1) odluka kaže da se cjenik objavljuje „na mrežnim stranicama trgovca” — svaka koncesija bi trebala na svojoj stranici imati poveznicu na svoj URL (ili vlastitu poddomenu); (2) vozila nisu izričito izuzeta; (3) pravilnik o baznoj cijeni još je u savjetovanju (nacrt: rok 11:00 sljedeći radni dan) — rokovi se mijenjaju u `watchdog`/agentu.
 - Izvori su većinom stručni članci; NN 101/2026 pročitan je izravno, datum primjene iz sekundarnih izvora.

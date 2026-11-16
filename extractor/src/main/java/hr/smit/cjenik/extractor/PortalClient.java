@@ -29,7 +29,7 @@ public final class PortalClient {
     public record Result(int status, String body) {
     }
 
-    public record Location(String grp, int betnr, List<String> feeds) {
+    public record Location(String grp, int betnr, List<String> feeds, List<String> sources) {
     }
 
     private static final SecureRandom RNG = new SecureRandom();
@@ -122,7 +122,9 @@ public final class PortalClient {
         for (JsonNode l : root.path("locations")) {
             List<String> feeds = new ArrayList<>();
             l.path("feeds").forEach(f -> feeds.add(f.asText()));
-            out.add(new Location(l.path("grp").asText(), l.path("betnr").asInt(), feeds));
+            List<String> sources = new ArrayList<>();
+            l.path("sources").forEach(s -> sources.add(s.asText()));
+            out.add(new Location(l.path("grp").asText(), l.path("betnr").asInt(), feeds, sources));
         }
         return out;
     }

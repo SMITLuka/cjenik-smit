@@ -12,7 +12,7 @@ final class CsvSpec
 {
     public const DELIM = ';';
 
-    /** Stupci cjenika PROIZVODA (Odluka cl. III): dijelovi i vozila. kolona => [tip, obavezno, maxDuljina] */
+    /** Stupci cjenika PROIZVODA (Odluka cl. III): vozila i dijelovi. kolona => [tip, obavezno, maxDuljina] */
     public const PROIZVOD_COLUMNS = [
         'naziv' => ['text', true, 300],
         'sifra' => ['text', true, 100],
@@ -41,10 +41,12 @@ final class CsvSpec
         'najniza_cijena_30_dana' => ['money', true, 0],
     ];
 
-    /** Tri odvojena cjenika po lokaciji: dijelovi, vozila (proizvodi) i radovi (usluge). */
+    /**
+     * Dva cjenika po lokaciji (specifikacija "Sidrene cijene Hrvatska s 17.11.2026."): 'proizvodi' (vozila i
+     * rezervni dijelovi u istoj datoteci, ista struktura) i 'radovi' (usluge).
+     */
     public const FEEDS = [
-        'dijelovi' => ['label' => 'Rezervni dijelovi', 'kind' => 'proizvod', 'columns' => self::PROIZVOD_COLUMNS],
-        'vozila' => ['label' => 'Vozila', 'kind' => 'proizvod', 'columns' => self::PROIZVOD_COLUMNS],
+        'proizvodi' => ['label' => 'Vozila i proizvodi', 'kind' => 'proizvod', 'columns' => self::PROIZVOD_COLUMNS],
         'radovi' => ['label' => 'Radovi (usluge)', 'kind' => 'usluga', 'columns' => self::USLUGA_COLUMNS],
     ];
 

@@ -11,7 +11,7 @@ use Throwable;
  * Ingest API (jedini put za podatke osim rucnog uploada u adminu).
  *   GET /api/v1/ping
  *   GET /api/v1/locations
- *   PUT /api/v1/{grp}/{betnr}/{dijelovi|vozila|radovi}[?date=YYYY-MM-DD]   (tijelo: CSV, opcionalno gzip uz Content-Encoding: gzip)
+ *   PUT /api/v1/{grp}/{betnr}/{proizvodi|radovi}[?date=YYYY-MM-DD]   (tijelo: CSV, opcionalno gzip uz Content-Encoding: gzip)
  */
 final class Api
 {
@@ -100,7 +100,7 @@ final class Api
         if ($method === 'GET' && $path === '/api/v1/locations') {
             return ['name' => 'locations'];
         }
-        if ($method === 'PUT' && preg_match('#^/api/v1/([a-z0-9]{2,8})/(\d{1,5})/(dijelovi|vozila|radovi)$#', $path, $m) === 1) {
+        if ($method === 'PUT' && preg_match('#^/api/v1/([a-z0-9]{2,8})/(\d{1,5})/(proizvodi|radovi)$#', $path, $m) === 1) {
             return ['name' => 'put', 'grp' => $m[1], 'betnr' => (int)$m[2], 'feed' => $m[3]];
         }
         return null;
@@ -154,7 +154,7 @@ final class Api
         $out = [];
         foreach (Locations::all(true) as $l) {
             if (Keys::allows($key, $l)) {
-                $out[] = ['grp' => $l['grp'], 'betnr' => (int)$l['betnr'], 'naziv' => $l['naziv'], 'feeds' => Locations::feeds($l)];
+                $out[] = ['grp' => $l['grp'], 'betnr' => (int)$l['betnr'], 'naziv' => $l['naziv'], 'feeds' => Locations::feeds($l), 'sources' => Locations::sources($l)];
             }
         }
         return ['ok' => true, 'locations' => $out];
