@@ -61,3 +61,6 @@ form.stack button { display: block; margin-top: 16px; }
   table { font-size: .9rem; }
   header.site nav a { margin: 0 16px 0 0; }
 }
+
+/* vise lokacija na stranici koncesije */
+.lokacija + .lokacija { margin-top: 40px; padding-top: 24px; border-top: 2px solid var(--line); }

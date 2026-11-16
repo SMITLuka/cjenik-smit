@@ -3,9 +3,16 @@
   <p><a href="<?= $e($concession['web_url']) ?>" rel="noopener"><?= $e($concession['web_url']) ?></a></p>
 <?php endif; ?>
 
-<h2>Prodajna mjesta</h2>
-<ul class="plain">
-<?php foreach ($locations as $l): ?>
-  <li><a href="/<?= $e($slug) ?>/<?= (int)$l['betnr'] ?>/"><?= $e($l['naziv']) ?></a><?= !empty($l['adresa']) ? ' <span class="muted">– ' . $e($l['adresa']) . '</span>' : '' ?></li>
+<?php if (count($items) > 1): ?>
+  <p class="muted">Prodajna mjesta:
+  <?php foreach ($items as $i => $it): ?><?= $i > 0 ? ' · ' : '' ?><a href="#lok-<?= (int)$it['loc']['betnr'] ?>"><?= $e($it['loc']['naziv']) ?></a><?php endforeach; ?>
+  </p>
+<?php endif; ?>
+
+<?php foreach ($items as $it): ?>
+  <?= \Cjenik\View::render('public/location_block', [
+      'level' => 2, 'slug' => $slug, 'loc' => $it['loc'], 'feeds' => $it['feeds'], 'today' => $today, 'baseUrl' => $baseUrl,
+  ]) ?>
 <?php endforeach; ?>
-</ul>
+
+<p class="muted"><a href="/<?= $e($slug) ?>/format.html">Opis stupaca (format CSV datoteka)</a></p>

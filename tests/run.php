@@ -465,6 +465,27 @@ $r = call($k['key_id'], $k['secret'], 'GET', '/api/v1/locations', '');
 t('API javlja cjenike i ukljucene izvore (vozila iskljucena)', str_contains(json_encode($r), '"betnr":101,"naziv":"Split","feeds":["proizvodi","radovi"],"sources":["dijelovi","radovi"]'), json_encode($r));
 rrmdir($root);
 
+// ---------------------------------------------------------------- stranica koncesije prikazuje cjenike svih lokacija
+echo "Stranica koncesije\n";
+$root = freshEnv();
+Locations::create(['grp' => 'kb5', 'betnr' => 1, 'naziv' => 'RB AUTO RIJEKA', 'adresa' => 'Brig 21, Rijeka']);
+Locations::create(['grp' => 'kb5', 'betnr' => 21, 'naziv' => 'RB AUTO ZAGREB', 'adresa' => 'Samoborska cesta, Zagreb']);
+Locations::create(['grp' => 'kb5', 'betnr' => 31, 'naziv' => 'RB AUTO ZADAR', 'adresa' => '159.brigade 10, Zadar']);
+Locations::create(['grp' => 'kb1', 'betnr' => 1, 'naziv' => 'Druga koncesija']);
+$k = Keys::create('global', null, null, 'agent');
+Clock::set(new DateTimeImmutable('2026-11-17 07:00:00', new DateTimeZone('Europe/Zagreb')));
+call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/1/proizvodi', PROIZVODI_CSV);
+call($k['key_id'], $k['secret'], 'PUT', '/api/v1/kb5/21/proizvodi', PROIZVODI_CSV);
+$g = (string)file_get_contents("$root/web/kb5/index.html");
+t('stranica koncesije ima sve tri lokacije s adresama', str_contains($g, 'RB AUTO RIJEKA') && str_contains($g, 'RB AUTO ZAGREB') && str_contains($g, 'RB AUTO ZADAR') && str_contains($g, 'Brig 21, Rijeka') && str_contains($g, 'Samoborska cesta, Zagreb'));
+t('stranica koncesije ima Preuzmi CSV izravno za lokacije s cjenikom', substr_count($g, 'Preuzmi CSV') === 2 && str_contains($g, 'href="/kb5/1/proizvodi/latest.csv"') && str_contains($g, 'href="/kb5/21/proizvodi/latest.csv"'));
+t('lokacija bez cjenika javlja jos nije objavljen', substr_count($g, 'još nije objavljen') >= 3);
+t('stranica koncesije ima poveznice za skok na lokaciju', str_contains($g, 'href="#lok-31"') && str_contains($g, 'id="lok-31"'));
+t('druga koncesija nije na toj stranici (izolacija)', !str_contains($g, 'Druga koncesija'));
+$loc1 = (string)file_get_contents("$root/web/kb5/1/index.html");
+t('stranica pojedine lokacije i dalje postoji s istim sadrzajem', str_contains($loc1, 'Preuzmi CSV') && str_contains($loc1, '<h1>RB AUTO RIJEKA</h1>') && str_contains($loc1, 'Automatsko preuzimanje') && !str_contains($loc1, 'RB AUTO ZAGREB'));
+rrmdir($root);
+
 // ---------------------------------------------------------------- jednokratno ciscenje starih cjenika dijelovi/vozila
 echo "Ciscenje starih cjenika\n";
 $root = freshEnv();

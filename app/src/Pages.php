@@ -47,26 +47,21 @@ final class Pages
             }
             $c = $names[$grp] ?? ['grp' => $grp, 'naziv' => strtoupper($grp), 'web_url' => null];
             $scoped = ['brand' => (string)$c['naziv'], 'brandHref' => "/$slug/", 'nav' => [['Format CSV-a', "/$slug/format.html"]], 'slug' => $slug];
-            $content = View::render('public/group', $common + $scoped + ['concession' => $c, 'locations' => $list]);
+            // stranica koncesije prikazuje cjenike SVIH njezinih lokacija odmah (bez ulaska u podstranice)
+            $today = Clock::today();
+            $items = [];
+            foreach ($list as $loc) {
+                $items[] = ['loc' => $loc, 'feeds' => self::feedData($loc)];
+            }
+            $content = View::render('public/group', $common + $scoped + ['concession' => $c, 'items' => $items, 'today' => $today]);
             Publisher::writeAtomic($root . "/$slug/index.html", View::render('public/layout', $common + $scoped + ['title' => (string)$c['naziv'], 'content' => $content, 'crumbs' => []]));
             $fmt = View::render('public/format', $common + ['feeds' => CsvSpec::FEEDS]);
             Publisher::writeAtomic($root . "/$slug/format.html", View::render('public/layout', $common + $scoped + ['title' => 'Opis formata CSV datoteka', 'content' => $fmt, 'crumbs' => [[(string)$c['naziv'], "/$slug/"]]]));
 
-            foreach ($list as $loc) {
-                $feeds = [];
-                foreach (Locations::feeds($loc) as $feed) {
-                    $ups = Db::all(
-                        'SELECT price_date, rows_count, bytes, source, created_at, file_name FROM uploads WHERE location_id = ? AND feed = ? ORDER BY price_date DESC',
-                        [$loc['id'], $feed]
-                    );
-                    foreach ($ups as &$u) {
-                        $u['file_name'] = Publisher::fileNameOf($u);
-                        $u['download'] = $u['file_name'];
-                    }
-                    unset($u);
-                    $feeds[$feed] = ['label' => CsvSpec::FEEDS[$feed]['label'], 'uploads' => $ups];
-                }
-                $content = View::render('public/location', $common + $scoped + ['concession' => $c, 'loc' => $loc, 'feeds' => $feeds, 'today' => Clock::today()]);
+            foreach ($items as $it) {
+                $loc = $it['loc'];
+                $feeds = $it['feeds'];
+                $content = View::render('public/location', $common + $scoped + ['concession' => $c, 'loc' => $loc, 'feeds' => $feeds, 'today' => $today]);
                 $title = $loc['naziv'] . ' (' . strtoupper((string)$loc['grp']) . '/' . $loc['betnr'] . ')';
                 Publisher::writeAtomic(
                     $root . "/$slug/" . (int)$loc['betnr'] . '/index.html',
@@ -81,6 +76,29 @@ final class Pages
         if (is_file($old)) {
             @unlink($old);
         }
+    }
+
+    /**
+     * Cjenici lokacije za prikaz: za svaki objavljeni cjenik popis uploada (najnoviji prvi) s nazivima datoteka.
+     * @param array<string,mixed> $loc
+     * @return array<string,array{label:string, uploads:list<array<string,mixed>>}>
+     */
+    private static function feedData(array $loc): array
+    {
+        $feeds = [];
+        foreach (Locations::feeds($loc) as $feed) {
+            $ups = Db::all(
+                'SELECT price_date, rows_count, bytes, source, created_at, file_name FROM uploads WHERE location_id = ? AND feed = ? ORDER BY price_date DESC',
+                [$loc['id'], $feed]
+            );
+            foreach ($ups as &$u) {
+                $u['file_name'] = Publisher::fileNameOf($u);
+                $u['download'] = $u['file_name'];
+            }
+            unset($u);
+            $feeds[$feed] = ['label' => CsvSpec::FEEDS[$feed]['label'], 'uploads' => $ups];
+        }
+        return $feeds;
     }
 
     /**
