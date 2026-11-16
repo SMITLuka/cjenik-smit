@@ -218,7 +218,7 @@ class CsvBuilderTest {
         try (Statement st = conn.createStatement()) {
             st.execute("create table vz (txt varchar(40), sk varchar(20), mar varchar(3), p1 decimal(12,2), p2 decimal(12,2), sid decimal(12,2), mn decimal(12,2))");
             st.execute("insert into vz values ('Clio', '161', 'RE', 10000.00, 9000.00, 10000.00, 8800.00)");
-            st.execute("insert into vz values (null, '162', 'DC', 8000.00, 8000.00, null, null)");
+            st.execute("insert into vz values (null, '162.00', 'DC', 8000.00, 8000.00, null, null)");
         }
         String q = "select txt as naziv_robe, sk as sifra_robe, mar as marka, '1' as neto_kolicina, 'KOM' as jmj,\n"
             + "p1 as cijena_za_jmj, p2 as maloprodajna_cijena, case when p2 < p1 then 'DA' else 'NE' end as poseban_oblik_prodaje,\n"

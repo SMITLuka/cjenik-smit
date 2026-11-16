@@ -133,7 +133,17 @@ public final class RowRules {
             String m = v.get("marka");
             if (m.length() <= 2) {
                 String name = m.isEmpty() ? null : BRANDS.get(m.toUpperCase(Locale.ROOT));
-                v.put("marka", name != null ? name : "Ostale marke");
+                name = name != null ? name : "Ostale marke";
+                // sifra XX (ostale marke): ako naziv pocinje s Renault, Dacia ili Nissan, to je marka
+                if (name.equals("Ostale marke")) {
+                    String first = v.getOrDefault("naziv", "").trim().split("\\s+", 2)[0].toUpperCase(Locale.ROOT);
+                    for (String b : new String[] {"Renault", "Dacia", "Nissan"}) {
+                        if (first.equals(b.toUpperCase(Locale.ROOT))) {
+                            name = b;
+                        }
+                    }
+                }
+                v.put("marka", name);
             }
         }
 

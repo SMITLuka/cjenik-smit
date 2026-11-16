@@ -143,7 +143,13 @@ function Complete-Row([hashtable]$Vals, [hashtable]$Idx, [string[]]$Cols, $Hist,
     if ($Vals.ContainsKey('marka')) {
         $m = $Vals['marka']
         if ($m.Length -le 2) {
-            $Vals['marka'] = if ($m -ne '' -and $BrandMap.ContainsKey($m)) { $BrandMap[$m] } else { 'Ostale marke' }
+            $brand = if ($m -ne '' -and $BrandMap.ContainsKey($m)) { $BrandMap[$m] } else { 'Ostale marke' }
+            # sifra XX (ostale marke): ako naziv pocinje s Renault, Dacia ili Nissan, to je marka
+            if ($brand -eq 'Ostale marke' -and $Vals.ContainsKey('naziv')) {
+                $first = ($Vals['naziv'].Trim() -split '\s+')[0]
+                foreach ($b in @('Renault', 'Dacia', 'Nissan')) { if ($first -ieq $b) { $brand = $b } }
+            }
+            $Vals['marka'] = $brand
         }
     }
 

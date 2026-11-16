@@ -282,6 +282,7 @@ function New-CsvFromSql([string]$Grp, [int]$Betnr, [string]$Feed, [string[]]$Src
                     foreach ($c in $cols) {
                         $s = if ($idx.ContainsKey($c)) { Format-Cell $rd.GetValue($idx[$c]) } else { '' }
                         if ($TextCols -contains $c) { $s = Clean-Text $s }
+                        if ($c -eq 'sifra') { $s = $s -replace '^(\d+)\.0+$', '$1' }  # sifra iz decimalnog polja (21479.00) -> 21479
                         $vals[$c] = $s
                     }
                     # prazan naziv (u bazi ima artikala bez naziva) -> zamjenjuje se sifrom

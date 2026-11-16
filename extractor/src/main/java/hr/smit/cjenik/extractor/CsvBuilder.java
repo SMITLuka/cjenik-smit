@@ -123,6 +123,9 @@ public final class CsvBuilder {
                 if (Feeds.TEXT.contains(c)) {
                     s = Cells.text(s);
                 }
+                if (c.equals("sifra")) {
+                    s = s.replaceFirst("^(\\d+)\\.0+$", "$1"); // sifra iz decimalnog polja (21479.00) -> 21479
+                }
                 vals.put(c, s);
             }
             // prazan naziv (u bazi ima artikala bez naziva) -> zamjenjuje se sifrom

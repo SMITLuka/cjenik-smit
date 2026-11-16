@@ -207,6 +207,23 @@ class RowRulesTest {
         assertEquals("Ostale marke", marka("Ostale marke"));
     }
 
+    @Test
+    void markaXxIzNazivaVozila() {
+        assertEquals("Renault", markaZaNaziv("XX", "RENAULT CLIO 1,2 16V"));
+        assertEquals("Dacia", markaZaNaziv("XX", "Dacia Logan MCV"));
+        assertEquals("Nissan", markaZaNaziv("XX", "  NISSAN MICRA 1.2 VISIA"));
+        assertEquals("Ostale marke", markaZaNaziv("XX", "RENAULTX FILTER"));
+        assertEquals("Ostale marke", markaZaNaziv("XX", "FILTER ULJA RENAULT"));
+        assertEquals("Mazda", markaZaNaziv("MA", "RENAULT CLIO"), "poznata sifra marke ima prednost");
+    }
+
+    private static String markaZaNaziv(String code, String naziv) {
+        Map<String, String> v = row("1.00", "1.00", "K1", code, "");
+        v.put("naziv", naziv);
+        RowRules.complete(v, NONE, COLS, null, "2026-11-17");
+        return v.get("marka");
+    }
+
     private static String marka(String code) {
         Map<String, String> v = row("1.00", "1.00", "K1", code, "");
         RowRules.complete(v, NONE, COLS, null, "2026-11-17");

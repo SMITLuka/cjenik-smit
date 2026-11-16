@@ -102,6 +102,8 @@ T 'Skoda, Citroen i Gasperov dobivaju dijakritike' ((MarkaZa 'SK') -ceq ([string
 T 'FA=Farizon, GM=General Motors, GL=Geely' ((MarkaZa 'FA') -eq 'Farizon' -and (MarkaZa 'GM') -eq 'General Motors' -and (MarkaZa 'GL') -eq 'Geely')
 T 'XX, nepoznata, prazna i zvjezdica = Ostale marke' ((MarkaZa 'XX') -eq 'Ostale marke' -and (MarkaZa 'ZZ') -eq 'Ostale marke' -and (MarkaZa '') -eq 'Ostale marke' -and (MarkaZa '*') -eq 'Ostale marke' -and (MarkaZa 'LM') -eq 'Ostale marke')
 T 'naziv iz SQL-a ostaje kako jest' ((MarkaZa 'Renault') -eq 'Renault' -and (MarkaZa 'Ostale marke') -eq 'Ostale marke')
+function MarkaNaziv([string]$code, [string]$naziv) { $x = NewVals '1.00' '1.00' 'K1'; $x['marka'] = $code; $x['naziv'] = $naziv; [void](Complete-Row $x $idxNone $colsM2 $null '2027-03-01'); $x['marka'] }
+T 'XX + naziv koji pocinje Renault/Dacia/Nissan = ta marka' ((MarkaNaziv 'XX' 'RENAULT CLIO 1,2') -eq 'Renault' -and (MarkaNaziv 'XX' 'Dacia Logan') -eq 'Dacia' -and (MarkaNaziv 'XX' '  NISSAN MICRA') -eq 'Nissan' -and (MarkaNaziv 'XX' 'FILTER RENAULT') -eq 'Ostale marke' -and (MarkaNaziv 'MA' 'RENAULT CLIO') -eq 'Mazda')
 T 'MT=Mitsubishi, MI=Mini, IS=Isuzu' ((MarkaZa 'MT') -eq 'Mitsubishi' -and (MarkaZa 'MI') -eq 'Mini' -and (MarkaZa 'IS') -eq 'Isuzu')
 
 # nula iz SQL-a za najnizu i sidrenu cijenu = nema podatka
